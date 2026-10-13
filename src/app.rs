@@ -173,6 +173,20 @@ impl KubectlUtilApp {
         self.launch(title, "aws", args);
     }
 
+    fn perform_login(&mut self) {
+        let profile = self.profile.clone();
+        // let region = self.region.clone();
+        let tx = self.tx.clone();
+        let title = "Login AWS SSO".to_string();
+        let program = "aws".to_string();
+
+        thread::spawn(move || {
+            let args = vec!["sso".into(), "login".into(), "--profile".into(), profile]; //, "--region".into(), region];
+            let last_result = command::run(&title, &program, &args);
+            let _ = tx.send(last_result);
+        });
+    }
+
     fn refresh_contexts(&mut self) {
         // Explicit refresh only: do not poll kubectl in the background.
         self.k("Contextos Kubernetes", &["config", "get-contexts", "-o", "name"]);
@@ -955,6 +969,8 @@ impl eframe::App for KubectlUtilApp {
                     ui.horizontal_wrapped(|ui| {
                         Self::field_combo(ui, "Perfil", &mut self.profile, &mut self.profile_filter, &self.profiles, 250.0);
                         if ui.button("Carregar perfis").clicked() { self.load_profiles(); }
+                        ui.add_space(10.0);
+                        if ui.button("Login AWS SSO").clicked() { self.perform_login(); }
                     });
                     ui.horizontal_wrapped(|ui| {
                         ui.label("Região");
