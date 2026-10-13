@@ -126,7 +126,7 @@ impl Default for KubectlUtilApp {
             output: "Bem-vindo ao kubectlUtil.\n\nSelecione uma seção e execute uma ação para consultar a AWS CLI ou o kubectl.".into(),
             status: "Pronto".into(),
             busy: false,
-            mock_mode: true,
+            mock_mode: false,
             mock_scenario: "Sucesso (dados padrão)".into(),
             explorer_output: String::new(),
             explorer_namespace: String::new(),
@@ -396,31 +396,60 @@ impl KubectlUtilApp {
             });
     }
 
-    fn field_combo(ui: &mut egui::Ui, label: &str, value: &mut String, filter: &mut String, values: &[String]) {
-        ui.label(label);
-        egui::ComboBox::from_id_salt(label)
-            .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
-            .selected_text(if value.is_empty() { "Selecionar…" } else { value.as_str() })
-            .width(300.0)
-            .height(400.0)
-            .show_ui(ui, |ui| {
-                ui.set_min_width(300.0);
-                ui.set_min_height(28.0);
-                ui.add(egui::TextEdit::singleline(filter).hint_text("Pesquisar / filtrar...").desired_width(280.0));
-                ui.separator();
-                let needle = filter.trim().to_lowercase();
-                let mut found = false;
-                for item in values.iter().filter(|item| item.to_lowercase().contains(&needle)) {
-                    found = true;
-                    if ui.add_sized([280.0, 34.0], egui::Button::new(item).selected(*value == *item)).clicked() {
-                        *value = item.clone();
-                        ui.close_menu();
+        fn field_combo(
+            ui: &mut egui::Ui,
+            label: &str,
+            value: &mut String,
+            filter: &mut String,
+            values: &[String],
+            width: f32,
+        ) {
+            ui.label(label);
+            egui::ComboBox::from_id_salt(label)
+                .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                .selected_text(if value.is_empty() {
+                    "Selecionar…"
+                } else {
+                    value.as_str()
+                })
+                .width(width)
+                .height(400.0)
+                .show_ui(ui, |ui| {
+                    ui.set_min_width(width);
+                    ui.set_min_height(28.0);
+
+                    ui.add(
+                        egui::TextEdit::singleline(filter)
+                            .hint_text("Pesquisar / filtrar...")
+                            .desired_width((width - 20.0).max(100.0)),
+                    );
+
+                    ui.separator();
+                    let needle = filter.trim().to_lowercase();
+                    let mut found = false;
+
+                    for item in values
+                        .iter()
+                        .filter(|item| item.to_lowercase().contains(&needle))
+                    {
+                        found = true;
+
+                        if ui
+                            .add_sized(
+                                [width - 20.0, 34.0],
+                                egui::Button::new(item).selected(*value == *item),
+                            )
+                            .clicked()
+                        {
+                            *value = item.clone();
+                            ui.close_menu();
+                        }
                     }
-                }
-                if !found {
-                    ui.label("Nenhum resultado para esse filtro.");
-                }
-            });
+
+                    if !found {
+                        ui.label("Nenhum resultado para esse filtro.");
+                    }
+                });
     }
 
     fn nav_button(&mut self, ui: &mut egui::Ui, section: Section) {
@@ -619,7 +648,15 @@ impl eframe::App for KubectlUtilApp {
                     ui.heading("Conexão Kubernetes");
 
                     ui.horizontal_wrapped(|ui| {
-                        Self::field_combo(ui, "Contexto", &mut self.context, &mut self.context_filter, &self.contexts);
+                        // Contexto
+                        Self::field_combo(
+                            ui,
+                            "Contexto",
+                            &mut self.context,
+                            &mut self.context_filter,
+                            &self.contexts,
+                            300.0,
+                        );
 
                         if ui.button("Atualizar").clicked() {
                             self.refresh_contexts();
@@ -645,12 +682,14 @@ impl eframe::App for KubectlUtilApp {
                     });
 
                     ui.horizontal_wrapped(|ui| {
+                        // Namespace: mais estreito
                         Self::field_combo(
                             ui,
                             "Namespace",
                             &mut self.namespace,
                             &mut self.namespace_filter,
                             &self.namespaces,
+                            180.0,
                         );
 
                         if ui.button("Carregar namespaces").clicked() {
@@ -914,7 +953,7 @@ impl eframe::App for KubectlUtilApp {
                 Section::Aws => {
                     ui.heading("AWS & EKS");
                     ui.horizontal_wrapped(|ui| {
-                        Self::field_combo(ui, "Perfil", &mut self.profile, &mut self.profile_filter, &self.profiles);
+                        Self::field_combo(ui, "Perfil", &mut self.profile, &mut self.profile_filter, &self.profiles, 250.0);
                         if ui.button("Carregar perfis").clicked() { self.load_profiles(); }
                     });
                     ui.horizontal_wrapped(|ui| {
