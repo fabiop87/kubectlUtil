@@ -76,4 +76,3 @@ Exemplo: `localhost:15432 → 5432` para um serviço e `localhost:16379 → 6379
 
 - Analisar formas de transformar num app online, acessível via VPN. (deixar para depois)
 - tentar fazer o aplicativo o mais genérico possível. Tudo que for específico a gente coloca em um arquivo de configurações. Por exemplo, o mapeamento entre o nome do serviço e o path do parameter store.
-- verificar se tem como trazer os parâmetros da aws sem trazer o valor deles quando são listados.
