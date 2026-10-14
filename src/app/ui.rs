@@ -100,10 +100,10 @@ impl eframe::App for KubectlUtilApp {
                 ui.checkbox(&mut self.mock_mode, "Modo Mock (sem rede)");
             });
             if self.mock_mode {
-                ui.label(egui::RichText::new("Nenhum comando real será executado.").small().color(egui::Color32::LIGHT_GREEN));
-                egui::ComboBox::from_label("Cenário de teste")
+                ui.label(egui::RichText::new("Nenhum comando real será executado.").small().color(egui::Color32::DARK_GREEN));
+                egui::ComboBox::from_label("Teste")
                     .selected_text(&self.mock_scenario)
-                    .width(155.0)
+                    .width(180.0)
                     .show_ui(ui, |ui| {
                         for scenario in ["Sucesso (dados padrão)", "Erro", "Timeout", "Lista vazia", "Sem permissões"] {
                             ui.selectable_value(&mut self.mock_scenario, scenario.to_string(), scenario);
@@ -256,30 +256,106 @@ impl eframe::App for KubectlUtilApp {
                             .width(300.0).height(400.0)
                             .show_ui(ui, |ui| {
                                 ui.set_min_width(300.0);
-                                ui.set_min_height(100.0);
-                                ui.add(egui::TextEdit::singleline(&mut self.pod_filter).hint_text("Pesquisar Pods...").desired_width(280.0));
+
+                                // Pesquisa fixa no topo
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut self.pod_filter)
+                                        .hint_text("Pesquisar Pods...")
+                                        .desired_width(280.0),
+                                );
+
                                 ui.separator();
-                                let needle = self.pod_filter.trim().to_lowercase();
-                                let matches: Vec<String> = self.pods.iter().filter(|x| x.to_lowercase().contains(&needle)).cloned().collect();
-                                if matches.is_empty() { ui.label("Nenhum Pod encontrado."); }
-                                for item in matches { if ui.add_sized([280.0, 34.0], egui::Button::new(&item).selected(self.pod == item)).clicked() { self.pod = item; ui.close_menu(); } }
+
+                                // Apenas a lista de opções terá rolagem
+                                egui::ScrollArea::vertical()
+                                    .id_salt("pod_options_scroll")
+                                    .max_height(200.0)
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        let needle = self.pod_filter.trim().to_lowercase();
+
+                                        let matches: Vec<String> = self
+                                            .pods
+                                            .iter()
+                                            .filter(|pod| pod.to_lowercase().contains(&needle))
+                                            .cloned()
+                                            .collect();
+
+                                        if matches.is_empty() {
+                                            ui.label("Nenhum Pod encontrado.");
+                                        }
+
+                                        for item in matches {
+                                            if ui
+                                                .add_sized(
+                                                    [280.0, 34.0],
+                                                    egui::Button::new(&item)
+                                                        .selected(self.pod == item),
+                                                )
+                                                .clicked()
+                                            {
+                                                self.pod = item;
+                                                ui.close_menu();
+                                            }
+                                        }
+                                    });
                             });
 
                         ui.label("Service");
                         egui::ComboBox::from_id_salt("service")
-                            .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
-                            .selected_text(if self.service.is_empty() { "Selecionar Service…" } else { &self.service })
-                            .width(300.0).height(400.0)
-                            .show_ui(ui, |ui| {
-                                ui.set_min_width(300.0);
-                                ui.set_min_height(100.0);
-                                ui.add(egui::TextEdit::singleline(&mut self.service_filter).hint_text("Pesquisar Services...").desired_width(280.0));
-                                ui.separator();
-                                let needle = self.service_filter.trim().to_lowercase();
-                                let matches: Vec<String> = self.services.iter().filter(|x| x.to_lowercase().contains(&needle)).cloned().collect();
-                                if matches.is_empty() { ui.label("Nenhum Service encontrado."); }
-                                for item in matches { if ui.add_sized([280.0, 34.0], egui::Button::new(&item).selected(self.service == item)).clicked() { self.service = item; ui.close_menu(); } }
-                            });
+                        .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                        .selected_text(if self.service.is_empty() {
+                            "Selecionar Service…"
+                        } else {
+                            &self.service
+                        })
+                        .width(300.0)
+                        .show_ui(ui, |ui| {
+                            ui.set_min_width(300.0);
+
+                            // Pesquisa fixa no topo
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.service_filter)
+                                    .hint_text("Pesquisar Services...")
+                                    .desired_width(280.0),
+                            );
+
+                            ui.separator();
+
+                            // Apenas a lista de opções terá rolagem
+                            egui::ScrollArea::vertical()
+                                .id_salt("service_options_scroll")
+                                .max_height(200.0)
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    let needle = self.service_filter.trim().to_lowercase();
+
+                                    let matches: Vec<String> = self
+                                        .services
+                                        .iter()
+                                        .filter(|service| service.to_lowercase().contains(&needle))
+                                        .cloned()
+                                        .collect();
+
+                                    if matches.is_empty() {
+                                        ui.label("Nenhum Service encontrado.");
+                                    }
+
+                                    for item in matches {
+                                        if ui
+                                            .add_sized(
+                                                [280.0, 34.0],
+                                                egui::Button::new(&item)
+                                                    .selected(self.service == item),
+                                            )
+                                            .clicked()
+                                        {
+                                            self.service = item;
+                                            ui.close_menu();
+                                        }
+                                    }
+                                });
+                        });
                     });
                 });
 

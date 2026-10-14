@@ -322,19 +322,23 @@ impl KubectlUtilApp {
             }
         }
         // No decryption on listing: only names, types and modification dates are needed.
+        // Listagem somente de metadados.
+        // describe-parameters não retorna os valores dos parâmetros.
         self.pending_parameter_key = key;
-        let mut args = vec!["ssm".into()];
-        if path.starts_with('/') {
-            // Hierarchical paths (including the root '/') use GetParametersByPath.
-            args.extend(["get-parameters-by-path".into(), "--path".into(), path,
-                "--recursive".into(), "--no-with-decryption".into()]);
-        } else {
-            // Parameter names without a leading slash are valid in SSM too.
-            // DescribeParameters returns metadata only; values are still fetched on demand.
-            args.extend(["describe-parameters".into(), "--parameter-filters".into(),
-                format!("Key=Name,Option=BeginsWith,Values={path}")]);
-        }
-        args.extend(["--profile".into(), profile, "--region".into(), region, "--output".into(), "json".into()]);
+
+        let args = vec![
+            "ssm".into(),
+            "describe-parameters".into(),
+            "--parameter-filters".into(),
+            format!("Key=Name,Option=BeginsWith,Values={path}"),
+            "--profile".into(),
+            profile,
+            "--region".into(),
+            region,
+            "--output".into(),
+            "json".into(),
+        ];
+
         self.launch("Listar parâmetros SSM", "aws", args);
     }
 
@@ -429,60 +433,69 @@ impl KubectlUtilApp {
             });
     }
 
-        fn field_combo(
-            ui: &mut egui::Ui,
-            label: &str,
-            value: &mut String,
-            filter: &mut String,
-            values: &[String],
-            width: f32,
-        ) {
-            ui.label(label);
-            egui::ComboBox::from_id_salt(label)
-                .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
-                .selected_text(if value.is_empty() {
-                    "Selecionar…"
-                } else {
-                    value.as_str()
-                })
-                .width(width)
-                .height(400.0)
-                .show_ui(ui, |ui| {
-                    ui.set_min_width(width);
-                    ui.set_min_height(100.0);
 
-                    ui.add(
-                        egui::TextEdit::singleline(filter)
-                            .hint_text("Pesquisar / filtrar...")
-                            .desired_width((width - 20.0).max(100.0)),
-                    );
+    fn field_combo(
+        ui: &mut egui::Ui,
+        label: &str,
+        value: &mut String,
+        filter: &mut String,
+        values: &[String],
+        width: f32,
+    ) {
+        ui.label(label);
 
-                    ui.separator();
-                    let needle = filter.trim().to_lowercase();
-                    let mut found = false;
+        egui::ComboBox::from_id_salt(label)
+            .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+            .selected_text(if value.is_empty() {
+                "Selecionar…"
+            } else {
+                value.as_str()
+            })
+            .width(width)
+            .show_ui(ui, |ui| {
+                ui.set_min_width(width);
 
-                    for item in values
-                        .iter()
-                        .filter(|item| item.to_lowercase().contains(&needle))
-                    {
-                        found = true;
+                // Pesquisa fixa no topo
+                ui.add(
+                    egui::TextEdit::singleline(filter)
+                        .hint_text("Pesquisar / filtrar...")
+                        .desired_width((width - 20.0).max(100.0)),
+                );
 
-                        if ui
-                            .add_sized(
-                                [width - 20.0, 34.0],
-                                egui::Button::new(item).selected(*value == *item),
-                            )
-                            .clicked()
-                        {
-                            *value = item.clone();
-                            ui.close_menu();
+                ui.separator();
+
+                // Apenas a lista de opções terá rolagem
+                egui::ScrollArea::vertical()
+                    .id_salt(("field_combo_options", label))
+                    .max_height(200.0)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let needle = filter.trim().to_lowercase();
+                        let mut found = false;
+
+                        for item in values.iter().filter(|item| {
+                            item.to_lowercase().contains(&needle)
+                        }) {
+                            found = true;
+
+                            if ui
+                                .add_sized(
+                                    [(width - 20.0).max(100.0), 34.0],
+                                    egui::Button::new(item)
+                                        .selected(*value == *item),
+                                )
+                                .clicked()
+                            {
+                                *value = item.clone();
+                                ui.close_menu();
+                            }
                         }
-                    }
 
-                    if !found {
-                        ui.label("Nenhum resultado para esse filtro.");
-                    }
-                });
+                        if !found {
+                            ui.label("Nenhum resultado para esse filtro.");
+                        }
+                    });
+            });
     }
 
     fn nav_button(&mut self, ui: &mut egui::Ui, section: Section) {
