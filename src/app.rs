@@ -333,6 +333,20 @@ impl KubectlUtilApp {
         self.launch("Listar parâmetros SSM", "aws", args);
     }
 
+    
+    fn clear_parameter_cache(&mut self) {
+        self.parameter_cache.clear();
+        self.parameters.clear();
+        self.loaded_parameter_key.clear();
+        self.pending_parameter_key.clear();
+
+        self.selected_parameter.clear();
+        self.revealed_parameter_value.clear();
+        self.parameter_value_visible = false;
+
+        self.status = "Cache do Parameter Store e dados exibidos em memória foram limpos.".into();
+    }
+
     fn reveal_selected_parameter(&mut self) {
         let current_key = self.parameter_cache_key(self.parameter_path.trim());
         if self.loaded_parameter_key != current_key {
@@ -854,7 +868,7 @@ impl eframe::App for KubectlUtilApp {
                         .fill(egui::Color32::from_rgb(18, 75, 45))
                         .stroke(egui::Stroke::new(
                             2.0_f32,
-                            egui::Color32::from_rgb(50, 220, 100),
+                            egui::Color32::from_rgb(20, 20, 20),
                         ))
                         .inner_margin(egui::Margin::same(10))
                         .show(ui, |ui| {
@@ -1015,6 +1029,7 @@ impl eframe::App for KubectlUtilApp {
                         ui.add(egui::TextEdit::singleline(&mut self.parameter_path).desired_width(300.0).hint_text("/producao/minha-aplicacao/"));
                         if ui.add_enabled(!self.busy, egui::Button::new("Carregar (usar cache)" )).clicked() { self.load_parameters(false); }
                         if ui.add_enabled(!self.busy, egui::Button::new("Atualizar da AWS")).clicked() { self.load_parameters(true); }
+                        if ui.add_enabled(!self.busy, egui::Button::new("Limpar cache")).clicked() {self.clear_parameter_cache();}
                     });
                     ui.horizontal(|ui| {
                         ui.label("Filtrar nomes");
