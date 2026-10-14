@@ -2,6 +2,28 @@
 
 Aplicativo desktop em Rust + `eframe/egui` para consultas sob demanda a Kubernetes, kubectl e AWS CLI.
 
+## Organização do código
+
+A estrutura foi mantida intencionalmente simples:
+
+```text
+src/
+├── main.rs          # Inicialização da janela e tema
+├── command.rs       # Execução de processos externos (kubectl/AWS CLI)
+└── app/
+    ├── mod.rs       # Estado do aplicativo e ações/ operações
+    ├── ui.rs        # Interface egui (abas, formulários e painéis)
+    └── mock.rs      # Resultados simulados para o modo Mock
+```
+
+**Onde fazer alterações:**
+- Para mudar botões, layout, abas e apresentação: `src/app/ui.rs`.
+- Para alterar ações e estado, como cache do Parameter Store e Port Forward: `src/app/mod.rs`.
+- Para mudar os dados/cenários simulados: `src/app/mock.rs`.
+- Para mudar a forma de executar `kubectl` ou `aws`: `src/command.rs`.
+
+Essa divisão não usa camadas ou abstrações avançadas. Os arquivos continuam dentro de um único crate Rust para facilitar o aprendizado e a compilação.
+
 ## Requisitos
 
 - Rust toolchain (`rustup`, `cargo` e `rustc`)
@@ -50,6 +72,8 @@ Exemplo: `localhost:15432 → 5432` para um serviço e `localhost:16379 → 6379
 - A execução de `kubectl port-forward` depende da conectividade, permissões RBAC, disponibilidade do Pod/Service e de a porta local estar livre.
 
 
-ajustes necessários:
-permitir buscar parâmetros que não tem "/" .
-quando tento clicar na caixa de pesquisa para filtrar um namespace, contexto ou pod, a caixa de pesquisa fecha.
+## Melhorias futuras
+
+- Analisar formas de transformar num app online, acessível via VPN. (deixar para depois)
+- tentar fazer o aplicativo o mais genérico possível. Tudo que for específico a gente coloca em um arquivo de configurações. Por exemplo, o mapeamento entre o nome do serviço e o path do parameter store.
+- verificar se tem como trazer os parâmetros da aws sem trazer o valor deles quando são listados.
