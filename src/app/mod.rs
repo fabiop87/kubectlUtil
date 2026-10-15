@@ -1,14 +1,35 @@
+//! Estado do aplicativo e operações. A interface fica em `ui/`, o tratamento de
+//! resultados em `results.rs` e as execuções (reais ou simuladas) em `runner.rs`.
+
+use crate::action::Action;
 use crate::command::{self, CommandResult};
 use eframe::egui;
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
 use std::thread;
-use std::process::Child;
-use std::collections::HashMap;
 
+mod diagnostics;
 mod mock;
+mod parameters;
+mod port_forward;
+mod presets;
+mod results;
+mod runner;
 mod ui;
+mod util;
 
-use self::mock::{mock_command_result, mock_scenario_message};
+use self::diagnostics::diagnose_pods;
+use self::mock::MockScenario;
+use self::parameters::ParameterStore;
+use self::port_forward::{ActivePortForward, PortForwardManager, StopOutcome};
+use self::presets::Preset;
+use self::runner::{MockRunner, RealRunner, Runner};
+use self::util::{timestamp, valid_port};
+
+const HISTORY_LIMIT: usize = 200;
+/// Limite de espera por resposta da API do cluster (evita `kubectl` preso).
+const KUBECTL_REQUEST_TIMEOUT: &str = "30s";
 
 #[derive(PartialEq, Clone, Copy)]
 enum Section {
@@ -33,49 +54,35 @@ impl Section {
     }
 }
 
-struct ActivePortForward {
-    target: String,
-    namespace: String,
-    local_port: String,
-    remote_port: String,
-    child: Option<Child>,
+/// Valor escolhido + opções disponíveis + texto do filtro de um combo pesquisável.
+#[derive(Default)]
+struct Selectable {
+    value: String,
+    items: Vec<String>,
+    filter: String,
 }
 
-#[derive(Clone, Debug)]
-struct ParameterEntry {
-    name: String,
-    kind: String,
-    modified: String,
+impl Selectable {
+    fn with_value(value: &str) -> Self {
+        Self { value: value.into(), ..Self::default() }
+    }
+
+    fn trimmed(&self) -> &str {
+        self.value.trim()
+    }
 }
 
 pub struct KubectlUtilApp {
+    ctx: egui::Context,
     section: Section,
-    context: String,
-    contexts: Vec<String>,
-    context_filter: String,
-    namespace: String,
-    namespaces: Vec<String>,
-    namespace_filter: String,
-    pod: String,
-    pods: Vec<String>,
-    pod_filter: String,
-    service: String,
-    services: Vec<String>,
-    service_filter: String,
-    profile: String,
-    profiles: Vec<String>,
-    profile_filter: String,
+    context: Selectable,
+    namespace: Selectable,
+    pod: Selectable,
+    service: Selectable,
+    profile: Selectable,
     region: String,
     cluster: String,
-    parameter_path: String,
-    parameter_filter: String,
-    parameters: Vec<ParameterEntry>,
-    parameter_cache: HashMap<String, Vec<ParameterEntry>>,
-    loaded_parameter_key: String,
-    pending_parameter_key: String,
-    selected_parameter: String,
-    revealed_parameter_value: String,
-    parameter_value_visible: bool,
+    params: ParameterStore,
     local_port: String,
     remote_port: String,
     filter: String,
@@ -83,47 +90,32 @@ pub struct KubectlUtilApp {
     output: String,
     status: String,
     busy: bool,
+    /// Sinal de cancelamento da operação em andamento.
+    cancel: Arc<AtomicBool>,
     mock_mode: bool,
-    mock_scenario: String,
+    mock_scenario: MockScenario,
     explorer_output: String,
     explorer_namespace: String,
     history: Vec<String>,
-    port_forwards: Vec<ActivePortForward>,
+    port_forwards: PortForwardManager,
     tx: Sender<CommandResult>,
     rx: Receiver<CommandResult>,
 }
 
-impl Default for KubectlUtilApp {
-    fn default() -> Self {
+impl KubectlUtilApp {
+    pub fn new(ctx: egui::Context) -> Self {
         let (tx, rx) = mpsc::channel();
         let mut app = Self {
+            ctx,
             section: Section::Connection,
-            context: String::new(),
-            contexts: vec![],
-            context_filter: String::new(),
-            namespace: String::new(),
-            namespaces: vec![],
-            namespace_filter: String::new(),
-            pod: String::new(),
-            pods: vec![],
-            pod_filter: String::new(),
-            service: String::new(),
-            services: vec![],
-            service_filter: String::new(),
-            profile: "default".into(),
-            profiles: vec![],
-            profile_filter: String::new(),
+            context: Selectable::default(),
+            namespace: Selectable::default(),
+            pod: Selectable::default(),
+            service: Selectable::default(),
+            profile: Selectable::with_value("default"),
             region: "us-east-1".into(),
             cluster: String::new(),
-            parameter_path: "/".into(),
-            parameter_filter: String::new(),
-            parameters: Vec::new(),
-            parameter_cache: HashMap::new(),
-            loaded_parameter_key: String::new(),
-            pending_parameter_key: String::new(),
-            selected_parameter: String::new(),
-            revealed_parameter_value: String::new(),
-            parameter_value_visible: false,
+            params: ParameterStore::new(),
             local_port: "5434".into(),
             remote_port: "5432".into(),
             filter: String::new(),
@@ -131,416 +123,437 @@ impl Default for KubectlUtilApp {
             output: "Bem-vindo ao kubectlUtil.\n\nSelecione uma seção e execute uma ação para consultar a AWS CLI ou o kubectl.".into(),
             status: "Pronto".into(),
             busy: false,
+            cancel: Arc::new(AtomicBool::new(false)),
             mock_mode: false,
-            mock_scenario: "Sucesso (dados padrão)".into(),
+            mock_scenario: MockScenario::Success,
             explorer_output: String::new(),
             explorer_namespace: String::new(),
             history: Vec::new(),
-            port_forwards: Vec::new(),
+            port_forwards: PortForwardManager::default(),
             tx,
             rx,
         };
         app.refresh_contexts();
         app
     }
-}
 
-impl KubectlUtilApp {
-    fn launch(&mut self, title: &str, program: &str, args: Vec<String>) {
+    // ------------------------------------------------------------------
+    // Execução de comandos
+    // ------------------------------------------------------------------
+
+    /// Real ou simulado, conforme o Modo Mock.
+    fn runner(&self) -> Arc<dyn Runner> {
+        if self.mock_mode {
+            Arc::new(MockRunner { scenario: self.mock_scenario })
+        } else {
+            Arc::new(RealRunner)
+        }
+    }
+
+    /// Executa um comando em segundo plano; o resultado volta pelo canal `rx`.
+    fn launch(&mut self, action: Action, program: &str, args: Vec<String>) {
         if self.busy {
             self.status = "Aguarde a operação atual terminar.".into();
             return;
         }
         self.busy = true;
-        self.status = format!("Executando: {title}…");
-        self.output_title = title.into();
-        self.output = "Consultando…".into();
+        self.status = format!("Executando: {}…", action.title());
+        if !action.is_silent() {
+            self.output_title = action.title().into();
+            self.output = "Consultando…".into();
+        }
+
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.cancel = Arc::clone(&cancel);
+        let runner = self.runner();
         let tx = self.tx.clone();
-        let title = title.to_string();
+        let ctx = self.ctx.clone();
         let program = program.to_string();
-        let mock_mode = self.mock_mode;
-        let mock_scenario = self.mock_scenario.clone();
         thread::spawn(move || {
-            let result = if mock_mode {
-                mock_command_result(title, &program, &args, &mock_scenario)
-            } else {
-                command::run(title, &program, &args)
-            };
+            let result = runner.run(action, &program, &args, &cancel);
             let _ = tx.send(result);
+            // Acorda a interface assim que o resultado estiver pronto.
+            ctx.request_repaint();
         });
     }
 
-    fn k(&mut self, title: &str, args: &[&str]) {
-        self.launch(title, "kubectl", command::args(args));
+    /// Argumentos globais do kubectl: contexto escolhido na interface e limite de espera.
+    ///
+    /// Passar `--context` em toda chamada garante que a consulta use exatamente o
+    /// contexto exibido na tela, sem depender (nem alterar) o kubeconfig global.
+    fn kubectl_args(&self, args: Vec<String>) -> Vec<String> {
+        let mut full = Vec::with_capacity(args.len() + 2);
+        let context = self.context.trimmed();
+        if !context.is_empty() {
+            full.push("--context".to_string());
+            full.push(context.to_string());
+        }
+        full.push(format!("--request-timeout={KUBECTL_REQUEST_TIMEOUT}"));
+        full.extend(args);
+        full
     }
 
-    fn aws(&mut self, title: &str, args: Vec<String>) {
-        self.launch(title, "aws", args);
+    fn kubectl(&mut self, action: Action, args: Vec<String>) {
+        let args = self.kubectl_args(args);
+        self.launch(action, "kubectl", args);
     }
 
-    fn perform_login(&mut self) {
-        let profile = self.profile.clone();
-        // let region = self.region.clone();
-        let tx = self.tx.clone();
-        let title = "Login AWS SSO".to_string();
-        let program = "aws".to_string();
-
-        thread::spawn(move || {
-            let args = vec!["sso".into(), "login".into(), "--profile".into(), profile]; //, "--region".into(), region];
-            let last_result = command::run(&title, &program, &args);
-            let _ = tx.send(last_result);
-        });
+    fn aws(&mut self, action: Action, args: Vec<String>) {
+        self.launch(action, "aws", args);
     }
+
+    /// `base` + `--profile` (+ `--region`).
+    fn aws_args(&self, base: &[&str], with_region: bool) -> Vec<String> {
+        let mut args = command::args(base);
+        args.push("--profile".into());
+        args.push(self.profile.trimmed().to_string());
+        if with_region {
+            args.push("--region".into());
+            args.push(self.region.trim().to_string());
+        }
+        args
+    }
+
+    /// Namespace selecionado, ou aviso ao usuário se não houver.
+    fn require_namespace(&mut self) -> Option<String> {
+        let namespace = self.namespace.trimmed().to_string();
+        if namespace.is_empty() {
+            self.status = "Selecione um namespace.".into();
+            None
+        } else {
+            Some(namespace)
+        }
+    }
+
+    fn run_preset(&mut self, preset: &Preset) {
+        let namespace = self.namespace.trimmed().to_string();
+        let pod = self.pod.trimmed().to_string();
+        if !preset.needs.is_satisfied(&namespace, &pod) {
+            self.status = preset.needs.missing_message().into();
+            return;
+        }
+        self.kubectl(preset.action, preset.build_args(&namespace, &pod));
+    }
+
+    fn log_history(&mut self, entry: String) {
+        self.history.push(entry);
+        if self.history.len() > HISTORY_LIMIT {
+            let excess = self.history.len() - HISTORY_LIMIT;
+            self.history.drain(..excess);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Kubernetes
+    // ------------------------------------------------------------------
 
     fn refresh_contexts(&mut self) {
-        // Explicit refresh only: do not poll kubectl in the background.
-        self.k("Contextos Kubernetes", &["config", "get-contexts", "-o", "name"]);
+        // Atualização explícita: nunca consulta o kubectl em segundo plano por conta própria.
+        self.launch(
+            Action::Contexts,
+            "kubectl",
+            command::args(&["config", "get-contexts", "-o", "name"]),
+        );
+    }
+
+    /// Descobre o contexto ativo do kubeconfig (silencioso: não altera o painel de saída).
+    fn fetch_current_context(&mut self) {
+        self.launch(Action::CurrentContext, "kubectl", command::args(&["config", "current-context"]));
+    }
+
+    /// Grava o contexto escolhido como padrão do kubeconfig (afeta seus outros terminais).
+    fn use_selected_context(&mut self) {
+        let context = self.context.trimmed().to_string();
+        if context.is_empty() {
+            self.status = "Selecione um contexto.".into();
+            return;
+        }
+        self.launch(
+            Action::UseContext,
+            "kubectl",
+            vec!["config".into(), "use-context".into(), context],
+        );
+    }
+
+    /// Namespaces, Pods e Services pertencem ao contexto anterior e deixam de valer.
+    fn on_context_changed(&mut self) {
+        self.namespace = Selectable::default();
+        self.pod = Selectable::default();
+        self.service = Selectable::default();
+        self.explorer_output.clear();
+        self.explorer_namespace.clear();
+        self.status = "Contexto alterado: carregue os namespaces deste contexto.".into();
+    }
+
+    /// Dados do modo anterior (real ou simulado) não valem no novo modo.
+    fn on_mock_toggled(&mut self) {
+        if self.mock_mode {
+            self.port_forwards.stop_all();
+        } else {
+            self.port_forwards.drop_simulated();
+        }
+        self.reset_connection_state();
+        self.refresh_contexts();
+        self.status = if self.mock_mode {
+            "Modo Mock ativado: operações externas bloqueadas."
+        } else {
+            "Modo real ativado: ações podem executar comandos AWS CLI/kubectl."
+        }
+        .into();
+    }
+
+    fn reset_connection_state(&mut self) {
+        self.context = Selectable::default();
+        self.namespace = Selectable::default();
+        self.pod = Selectable::default();
+        self.service = Selectable::default();
+        self.profile = Selectable::with_value("default");
+        self.params.clear_all();
+        self.explorer_output.clear();
+        self.explorer_namespace.clear();
+    }
+
+    fn refresh_namespaces(&mut self) {
+        self.kubectl(
+            Action::Namespaces,
+            command::args(&["get", "namespaces", "-o", "custom-columns=:metadata.name"]),
+        );
+    }
+
+    fn load_pods(&mut self) {
+        let Some(namespace) = self.require_namespace() else { return };
+        self.kubectl(
+            Action::PodNames,
+            command::args(&["get", "pods", "-n", &namespace, "-o", "custom-columns=:metadata.name"]),
+        );
+    }
+
+    fn load_services(&mut self) {
+        let Some(namespace) = self.require_namespace() else { return };
+        self.kubectl(
+            Action::ServiceNames,
+            command::args(&["get", "svc", "-n", &namespace, "-o", "custom-columns=:metadata.name"]),
+        );
+    }
+
+    fn pods_wide_args(namespace: &str) -> Vec<String> {
+        command::args(&["get", "pods", "-n", namespace, "-o", "wide"])
     }
 
     fn load_pod_explorer(&mut self) {
-        let ns = self.current_namespace();
-        if ns.is_empty() { self.status = "Selecione um namespace.".into(); return; }
-        self.explorer_namespace = ns.clone();
-        self.launch("Explorador de Pods", "kubectl", vec!["get".into(), "pods".into(), "-n".into(), ns, "-o".into(), "wide".into()]);
+        let Some(namespace) = self.require_namespace() else { return };
+        self.explorer_namespace = namespace.clone();
+        self.kubectl(Action::PodExplorer, Self::pods_wide_args(&namespace));
     }
 
     fn run_pod_diagnostics(&mut self) {
-        let ns = self.current_namespace();
-        if ns.is_empty() { self.status = "Selecione um namespace.".into(); return; }
-        // Reuse the last pod listing if available; only query kubectl when no snapshot exists.
-        if !self.explorer_output.is_empty() && self.explorer_namespace == ns {
+        let Some(namespace) = self.require_namespace() else { return };
+        // Reaproveita a última listagem; só consulta o kubectl se não houver uma.
+        if !self.explorer_output.is_empty() && self.explorer_namespace == namespace {
             self.output_title = "Diagnóstico de Pods (cache local)".into();
             self.output = diagnose_pods(&self.explorer_output);
             self.status = "Diagnóstico calculado a partir da última lista carregada; nenhuma nova consulta.".into();
         } else {
-            self.explorer_namespace = ns.clone();
-            self.launch("Diagnóstico de Pods", "kubectl", vec!["get".into(), "pods".into(), "-n".into(), ns, "-o".into(), "wide".into()]);
+            self.explorer_namespace = namespace.clone();
+            self.kubectl(Action::PodDiagnostics, Self::pods_wide_args(&namespace));
         }
     }
 
+    // ------------------------------------------------------------------
+    // Port Forward
+    // ------------------------------------------------------------------
+
     fn start_port_forward(&mut self, target: String) {
-        let ns = self.current_namespace();
-        let lp = self.local_port.trim().to_string();
-        let rp = self.remote_port.trim().to_string();
-        if ns.is_empty() || !valid_port(&lp) || !valid_port(&rp) {
+        let namespace = self.namespace.trimmed().to_string();
+        let local_port = self.local_port.trim().to_string();
+        let remote_port = self.remote_port.trim().to_string();
+        if namespace.is_empty() || !valid_port(&local_port) || !valid_port(&remote_port) {
             self.status = "Selecione namespace e informe portas válidas (1–65535).".into();
             return;
         }
-        if self.port_forwards.iter().any(|pf| pf.local_port == lp) {
-            self.status = format!("A porta local {lp} já está sendo usada por outro Port Forward. Escolha outra porta local.");
+        if self.port_forwards.local_port_in_use(&local_port) {
+            self.status = format!(
+                "A porta local {local_port} já está sendo usada por outro Port Forward. Escolha outra porta local."
+            );
             return;
         }
-        if self.mock_mode {
-            if self.mock_scenario != "Sucesso (dados padrão)" {
-                self.status = mock_scenario_message(&self.mock_scenario);
-                return;
-            }
-            self.port_forwards.push(ActivePortForward {
-                target: target.clone(), namespace: ns.clone(), local_port: lp.clone(), remote_port: rp.clone(), child: None,
-            });
-            self.status = format!("[MOCK] Port Forward simulado: {target} em {ns}, localhost:{lp} → porta remota {rp}. Nenhuma conexão foi aberta.");
-            self.history.push(format!("{} | [MOCK] iniciar port-forward {} {} {}:{}", timestamp(), target, ns, lp, rp));
-            return;
+
+        let mut args: Vec<String> = Vec::new();
+        let context = self.context.trimmed();
+        if !context.is_empty() {
+            args.push("--context".to_string());
+            args.push(context.to_string());
         }
-        let args = vec!["port-forward".into(), "-n".into(), ns.clone(), target.clone(), format!("{lp}:{rp}")];
-        match command::spawn("kubectl", &args) {
-            Ok(child) => {
+        args.push("port-forward".to_string());
+        args.push("-n".to_string());
+        args.push(namespace.clone());
+        args.push(target.clone());
+        args.push(format!("{local_port}:{remote_port}"));
+
+        match self.runner().start_background("kubectl", &args) {
+            Ok(backend) => {
+                let simulated = backend.is_simulated();
                 self.port_forwards.push(ActivePortForward {
-                    target: target.clone(), namespace: ns.clone(), local_port: lp.clone(), remote_port: rp.clone(), child: Some(child),
+                    target: target.clone(),
+                    namespace: namespace.clone(),
+                    local_port: local_port.clone(),
+                    remote_port: remote_port.clone(),
+                    backend,
                 });
-                self.status = format!("Port Forward ativo: {target} em {ns}, localhost:{lp} → porta remota {rp}.");
-                self.history.push(format!("{} | iniciar port-forward {} {} {}:{}", timestamp(), target, ns, lp, rp));
+                if simulated {
+                    self.status = format!(
+                        "[MOCK] Port Forward simulado: {target} em {namespace}, localhost:{local_port} → porta remota {remote_port}. Nenhuma conexão foi aberta."
+                    );
+                    self.log_history(format!(
+                        "{} | [MOCK] iniciar port-forward {target} {namespace} {local_port}:{remote_port}",
+                        timestamp()
+                    ));
+                } else {
+                    self.status = format!(
+                        "Port Forward ativo: {target} em {namespace}, localhost:{local_port} → porta remota {remote_port}."
+                    );
+                    self.log_history(format!(
+                        "{} | iniciar port-forward {target} {namespace} {local_port}:{remote_port}",
+                        timestamp()
+                    ));
+                }
             }
-            Err(e) => self.status = format!("Falha ao iniciar Port Forward: {e}"),
+            Err(message) => self.status = message,
         }
     }
 
     fn stop_port_forward(&mut self, index: usize) {
-        if index >= self.port_forwards.len() {
-            self.status = "Port Forward não encontrado; atualize a lista.".into();
-            return;
-        }
-        let mut pf = self.port_forwards.remove(index);
-        if let Some(child) = pf.child.as_mut() {
-            match child.kill() {
-                Ok(()) => { let _ = child.wait(); self.status = format!("Port Forward encerrado: {} em localhost:{}.", pf.target, pf.local_port); }
-                Err(e) => { self.status = format!("Não foi possível encerrar Port Forward {}: {e}", pf.target); return; }
+        match self.port_forwards.stop(index) {
+            StopOutcome::NotFound => {
+                self.status = "Port Forward não encontrado; atualize a lista.".into();
             }
-        } else {
-            self.status = format!("[MOCK] Port Forward simulado encerrado: {} em localhost:{}.", pf.target, pf.local_port);
+            StopOutcome::Failed(target, error) => {
+                self.status = format!("Não foi possível encerrar Port Forward {target}: {error}");
+            }
+            StopOutcome::Stopped(pf) => {
+                self.status = if pf.backend.is_simulated() {
+                    format!("[MOCK] Port Forward simulado encerrado: {} em localhost:{}.", pf.target, pf.local_port)
+                } else {
+                    format!("Port Forward encerrado: {} em localhost:{}.", pf.target, pf.local_port)
+                };
+                self.log_history(format!(
+                    "{} | parar port-forward {} {}:{}",
+                    timestamp(),
+                    pf.target,
+                    pf.local_port,
+                    pf.remote_port
+                ));
+            }
         }
-        self.history.push(format!("{} | parar port-forward {} {}:{}", timestamp(), pf.target, pf.local_port, pf.remote_port));
     }
 
-    fn refresh_namespaces(&mut self) {
-        self.k("Namespaces", &["get", "namespaces", "-o", "custom-columns=:metadata.name"]);
+    fn stop_all_port_forwards(&mut self) {
+        let count = self.port_forwards.len();
+        self.port_forwards.stop_all();
+        self.status = format!("{count} Port Forward(s) encerrado(s).");
+        self.log_history(format!("{} | parar todos os port-forwards ({count})", timestamp()));
     }
 
-    fn refresh_workloads(&mut self) {
-        if self.namespace.trim().is_empty() {
-            self.status = "Selecione um namespace primeiro.".into();
-            return;
+    /// Remove da lista (e explica) os port-forwards cujo processo terminou sozinho.
+    fn poll_port_forwards(&mut self) {
+        for ended in self.port_forwards.poll_exited() {
+            let detail = if ended.stderr.is_empty() {
+                String::new()
+            } else {
+                format!("\n\n[stderr]\n{}", ended.stderr)
+            };
+            self.status = format!(
+                "Port Forward encerrado: {} em localhost:{}.",
+                ended.target, ended.local_port
+            );
+            self.output_title = "Port Forward encerrado".into();
+            self.output = format!(
+                "O kubectl port-forward de {} (namespace {}, localhost:{} → {}) terminou sozinho ({}).{detail}",
+                ended.target, ended.namespace, ended.local_port, ended.remote_port, ended.status
+            );
+            self.log_history(format!(
+                "{} | port-forward encerrado {} {}:{} | {}",
+                timestamp(),
+                ended.target,
+                ended.local_port,
+                ended.remote_port,
+                ended.status
+            ));
         }
-        let ns = self.namespace.clone();
-        self.launch("Pods", "kubectl", vec!["get".into(), "pods".into(), "-n".into(), ns.clone(), "-o".into(), "custom-columns=:metadata.name".into()]);
     }
 
-    fn load_services(&mut self) {
-        if self.namespace.trim().is_empty() {
-            self.status = "Selecione um namespace primeiro.".into();
-            return;
-        }
-        self.k("Services", &["get", "svc", "-n", &self.namespace.clone(), "-o", "custom-columns=:metadata.name"]);
-    }
+    // ------------------------------------------------------------------
+    // AWS
+    // ------------------------------------------------------------------
 
     fn load_profiles(&mut self) {
-        self.aws("Perfis AWS", command::args(&["configure", "list-profiles"]));
+        self.aws(Action::AwsProfiles, command::args(&["configure", "list-profiles"]));
     }
 
-    fn parameter_cache_key(&self, path: &str) -> String {
-        format!("{}|{}|{}", self.profile.trim(), self.region.trim(), path.trim())
+    /// `aws sso login`: abre o navegador e espera a autorização (com limite de tempo).
+    fn perform_login(&mut self) {
+        let args = self.aws_args(&["sso", "login"], false);
+        self.aws(Action::AwsSsoLogin, args);
     }
+
+    // ------------------------------------------------------------------
+    // Parameter Store
+    // ------------------------------------------------------------------
 
     fn load_parameters(&mut self, force_refresh: bool) {
-        let profile = self.profile.trim().to_string();
+        let profile = self.profile.trimmed().to_string();
         let region = self.region.trim().to_string();
-        let path = self.parameter_path.trim().to_string();
+        let path = self.params.path.trim().to_string();
         if profile.is_empty() || region.is_empty() || path.is_empty() {
             self.status = "Informe um perfil, uma região e um nome ou caminho de parâmetro.".into();
             return;
         }
-        let key = self.parameter_cache_key(&path);
+        let key = parameters::cache_key(&profile, &region, &path);
         if !force_refresh {
-            if let Some(cached) = self.parameter_cache.get(&key) {
-                self.parameters = cached.clone();
-                self.loaded_parameter_key = key.clone();
-                self.selected_parameter.clear();
-                self.revealed_parameter_value.clear();
-                self.parameter_value_visible = false;
-                self.status = format!("{} parâmetros carregados do cache local; nenhuma chamada à AWS.", self.parameters.len());
+            if let Some(cached) = self.params.cache.get(&key).cloned() {
+                self.params.show(key, cached);
+                self.status = format!(
+                    "{} parâmetros carregados do cache local; nenhuma chamada à AWS.",
+                    self.params.entries.len()
+                );
                 return;
             }
         }
-        // No decryption on listing: only names, types and modification dates are needed.
-        // Listagem somente de metadados.
-        // describe-parameters não retorna os valores dos parâmetros.
-        self.pending_parameter_key = key;
-
-        let args = vec![
-            "ssm".into(),
-            "describe-parameters".into(),
-            "--parameter-filters".into(),
-            format!("Key=Name,Option=BeginsWith,Values={path}"),
-            "--profile".into(),
-            profile,
-            "--region".into(),
-            region,
-            "--output".into(),
-            "json".into(),
-        ];
-
-        self.launch("Listar parâmetros SSM", "aws", args);
+        // Listagem somente de metadados: `describe-parameters` não retorna valores.
+        self.params.pending_key = key;
+        self.aws(Action::SsmList, parameters::describe_args(&profile, &region, &path));
     }
 
-    
     fn clear_parameter_cache(&mut self) {
-        self.parameter_cache.clear();
-        self.parameters.clear();
-        self.loaded_parameter_key.clear();
-        self.pending_parameter_key.clear();
-
-        self.selected_parameter.clear();
-        self.revealed_parameter_value.clear();
-        self.parameter_value_visible = false;
-
+        self.params.clear_all();
         self.status = "Cache do Parameter Store e dados exibidos em memória foram limpos.".into();
     }
 
     fn reveal_selected_parameter(&mut self) {
-        let current_key = self.parameter_cache_key(self.parameter_path.trim());
-        if self.loaded_parameter_key != current_key {
+        let current_key = parameters::cache_key(
+            self.profile.trimmed(),
+            &self.region,
+            &self.params.path,
+        );
+        if self.params.loaded_key != current_key {
             self.status = "O perfil, a região ou o caminho mudou. Carregue os parâmetros para atualizar a seleção antes de consultar valores.".into();
             return;
         }
-        if self.selected_parameter.is_empty() {
+        if self.params.selected.is_empty() {
             self.status = "Selecione um parâmetro primeiro.".into();
             return;
         }
-        let entry = match self.parameters.iter().find(|p| p.name == self.selected_parameter) {
-            Some(p) => p,
-            None => { self.status = "O parâmetro selecionado não está na lista atual.".into(); return; }
+        let selected = self.params.selected.clone();
+        let Some(entry) = self.params.entries.iter().find(|p| p.name == selected) else {
+            self.status = "O parâmetro selecionado não está na lista atual.".into();
+            return;
         };
-        if entry.kind == "SecureString" {
-            self.launch("Revelar SecureString", "aws", vec![
-                "ssm".into(), "get-parameter".into(), "--name".into(), entry.name.clone(),
-                "--with-decryption".into(), "--profile".into(), self.profile.trim().to_string(),
-                "--region".into(), self.region.trim().to_string(), "--query".into(), "Parameter.Value".into(),
-                "--output".into(), "text".into()
-            ]);
-        } else {
-            self.launch("Revelar parâmetro", "aws", vec![
-                "ssm".into(), "get-parameter".into(), "--name".into(), entry.name.clone(),
-                "--profile".into(), self.profile.trim().to_string(), "--region".into(), self.region.trim().to_string(),
-                "--query".into(), "Parameter.Value".into(), "--output".into(), "text".into()
-            ]);
-        }
-        self.revealed_parameter_value.clear();
-        self.parameter_value_visible = false;
+        let secure = entry.kind == "SecureString";
+        let name = entry.name.clone();
+
+        let args = parameters::get_args(&name, secure, self.profile.trimmed(), self.region.trim());
+        let action = if secure { Action::SsmRevealSecure } else { Action::SsmRevealPlain };
+        self.params.hide_value();
+        self.aws(action, args);
     }
-
-    fn output_action(&mut self, title: &str, args: Vec<String>) {
-        self.launch(title, "kubectl", args);
-    }
-
-    fn current_namespace(&self) -> String { self.namespace.trim().to_string() }
-    fn current_pod(&self) -> String { self.pod.trim().to_string() }
-    fn current_service(&self) -> String { self.service.trim().to_string() }
-
-    fn show_output_panel(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.heading(&self.output_title);
-            ui.separator();
-            ui.label(if self.busy { "Executando…" } else { &self.status });
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Limpar").clicked() { self.output.clear(); }
-                if ui.button("Copiar").clicked() {
-                    ui.ctx().copy_text(self.output.clone());
-                    self.status = "Saída copiada.".into();
-                }
-                if ui.button("Salvar .log").clicked() {
-                    match std::fs::write("kubectlUtil-output.log", &self.output) {
-                        Ok(_) => self.status = "Salvo em kubectlUtil-output.log".into(),
-                        Err(e) => self.status = format!("Erro ao salvar: {e}"),
-                    }
-                }
-            });
-        });
-        ui.add_space(6.0);
-        egui::ScrollArea::vertical()
-            .id_salt("output_scroll_area")
-            .max_height(f32::INFINITY)
-            .stick_to_bottom(true)
-            .show(ui, |ui| {
-                ui.add_space(4.0);
-
-                ui.add(
-                    egui::TextEdit::multiline(&mut self.output)
-                        .font(egui::TextStyle::Monospace)
-                        .desired_width(f32::INFINITY)
-                        .desired_rows(16)
-                        .interactive(false),
-                );
-            });
-    }
-
-
-    fn field_combo(
-        ui: &mut egui::Ui,
-        label: &str,
-        value: &mut String,
-        filter: &mut String,
-        values: &[String],
-        width: f32,
-    ) {
-        ui.label(label);
-
-        egui::ComboBox::from_id_salt(label)
-            .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
-            .selected_text(if value.is_empty() {
-                "Selecionar…"
-            } else {
-                value.as_str()
-            })
-            .width(width)
-            .show_ui(ui, |ui| {
-                ui.set_min_width(width);
-
-                // Pesquisa fixa no topo
-                ui.add(
-                    egui::TextEdit::singleline(filter)
-                        .hint_text("Pesquisar / filtrar...")
-                        .desired_width((width - 20.0).max(100.0)),
-                );
-
-                ui.separator();
-
-                // Apenas a lista de opções terá rolagem
-                egui::ScrollArea::vertical()
-                    .id_salt(("field_combo_options", label))
-                    .max_height(200.0)
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        let needle = filter.trim().to_lowercase();
-                        let mut found = false;
-
-                        for item in values.iter().filter(|item| {
-                            item.to_lowercase().contains(&needle)
-                        }) {
-                            found = true;
-
-                            if ui
-                                .add_sized(
-                                    [(width - 20.0).max(100.0), 34.0],
-                                    egui::Button::new(item)
-                                        .selected(*value == *item),
-                                )
-                                .clicked()
-                            {
-                                *value = item.clone();
-                                ui.close_menu();
-                            }
-                        }
-
-                        if !found {
-                            ui.label("Nenhum resultado para esse filtro.");
-                        }
-                    });
-            });
-    }
-
-    fn nav_button(&mut self, ui: &mut egui::Ui, section: Section) {
-        if ui.selectable_label(self.section == section, section.label()).clicked() {
-            self.section = section;
-        }
-    }
-}
-
-fn valid_port(port: &str) -> bool {
-    port.parse::<u16>().map(|p| p > 0).unwrap_or(false)
-}
-
-
-fn timestamp() -> String {
-    // Local, dependency-free timestamp suitable for an audit trail (seconds since Unix epoch).
-    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
-        Ok(d) => format!("unix:{}", d.as_secs()),
-        Err(_) => "unix:unknown".into(),
-    }
-}
-
-
-impl Drop for KubectlUtilApp {
-    fn drop(&mut self) {
-        for pf in &mut self.port_forwards {
-            if let Some(child) = pf.child.as_mut() {
-                let _ = child.kill();
-                let _ = child.wait();
-            }
-        }
-    }
-}
-
-
-fn diagnose_pods(source: &str) -> String {
-    let mut report = String::from("Diagnóstico rápido (análise local da lista de Pods)\n\n");
-    let mut found = false;
-    for line in source.lines() {
-        let lower = line.to_ascii_lowercase();
-        if lower.contains("crashloopbackoff") || lower.contains("imagepullbackoff") || lower.contains("errimagepull") || lower.contains("pending") || lower.contains("error") || lower.contains("notready") {
-            report.push_str("[ATENÇÃO] "); report.push_str(line); report.push('\n'); found = true;
-        }
-    }
-    if !found { report.push_str("Nenhum estado suspeito foi identificado na saída. Isso não substitui logs/events.\n"); }
-    report.push_str("\nSaída original:\n"); report.push_str(source);
-    report
 }

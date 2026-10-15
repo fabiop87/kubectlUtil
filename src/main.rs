@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use eframe::egui;
+mod action;
 mod app;
 mod command;
 
@@ -21,7 +22,9 @@ fn main() -> eframe::Result<()> {
             visuals.panel_fill = egui::Color32::from_rgb(247, 249, 252);
             visuals.window_fill = egui::Color32::WHITE;
             cc.egui_ctx.set_visuals(visuals);
-            Ok(Box::new(app::KubectlUtilApp::default()))
+            // O contexto é entregue ao app para que threads de trabalho possam
+            // pedir um novo desenho assim que um resultado estiver pronto.
+            Ok(Box::new(app::KubectlUtilApp::new(cc.egui_ctx.clone())))
         }),
     )
 }
