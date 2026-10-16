@@ -74,14 +74,25 @@ const WORKLOADS: Preset = Preset {
     label: "Workloads",
     action: Action::Workloads,
     needs: Needs::Namespace,
-    args: &["get", "deployments,daemonsets,statefulsets,jobs", "-n", "{ns}"],
+    args: &[
+        "get",
+        "deployments,daemonsets,statefulsets,jobs",
+        "-n",
+        "{ns}",
+    ],
 };
 
 const EVENTS: Preset = Preset {
     label: "Eventos",
     action: Action::Events,
     needs: Needs::Namespace,
-    args: &["get", "events", "-n", "{ns}", "--sort-by=.metadata.creationTimestamp"],
+    args: &[
+        "get",
+        "events",
+        "-n",
+        "{ns}",
+        "--sort-by=.metadata.creationTimestamp",
+    ],
 };
 
 const SERVICES: Preset = Preset {
@@ -109,7 +120,15 @@ const IMAGES: Preset = Preset {
 pub const OVERVIEW: &[Preset] = &[CLUSTER_INFO, NODES, EVENTS];
 
 /// Aba "Cluster".
-pub const CLUSTER: &[Preset] = &[NODES, TOP_NODES, WORKLOADS, CLUSTER_INFO, EVENTS, SERVICES, IMAGES];
+pub const CLUSTER: &[Preset] = &[
+    NODES,
+    TOP_NODES,
+    WORKLOADS,
+    CLUSTER_INFO,
+    EVENTS,
+    SERVICES,
+    IMAGES,
+];
 
 /// Aba "Rede e storage".
 pub const NETWORK: &[Preset] = &[

@@ -7,7 +7,10 @@ pub fn valid_port(port: &str) -> bool {
 }
 
 fn unix_seconds() -> Option<u64> {
-    SystemTime::now().duration_since(UNIX_EPOCH).ok().map(|d| d.as_secs())
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs())
 }
 
 /// Data/hora UTC legível para o histórico (ex.: `2026-10-14 15:30:00 UTC`).
@@ -21,7 +24,10 @@ pub fn timestamp() -> String {
 /// Sufixo para nomes de arquivo (ex.: `20261014153000`).
 pub fn file_stamp() -> String {
     match unix_seconds() {
-        Some(secs) => format_utc(secs).chars().filter(char::is_ascii_digit).collect(),
+        Some(secs) => format_utc(secs)
+            .chars()
+            .filter(char::is_ascii_digit)
+            .collect(),
         None => "sem-data".into(),
     }
 }

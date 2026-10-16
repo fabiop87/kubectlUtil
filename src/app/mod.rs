@@ -4,9 +4,9 @@
 use crate::action::Action;
 use crate::command::{self, CommandResult};
 use eframe::egui;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Arc;
 use std::thread;
 
 mod diagnostics;
@@ -64,7 +64,10 @@ struct Selectable {
 
 impl Selectable {
     fn with_value(value: &str) -> Self {
-        Self { value: value.into(), ..Self::default() }
+        Self {
+            value: value.into(),
+            ..Self::default()
+        }
     }
 
     fn trimmed(&self) -> &str {
@@ -147,7 +150,9 @@ impl KubectlUtilApp {
     /// Real ou simulado, conforme o Modo Mock.
     fn runner(&self) -> Arc<dyn Runner> {
         if self.mock_mode {
-            Arc::new(MockRunner { scenario: self.mock_scenario })
+            Arc::new(MockRunner {
+                scenario: self.mock_scenario,
+            })
         } else {
             Arc::new(RealRunner)
         }
@@ -261,7 +266,11 @@ impl KubectlUtilApp {
 
     /// Descobre o contexto ativo do kubeconfig (silencioso: não altera o painel de saída).
     fn fetch_current_context(&mut self) {
-        self.launch(Action::CurrentContext, "kubectl", command::args(&["config", "current-context"]));
+        self.launch(
+            Action::CurrentContext,
+            "kubectl",
+            command::args(&["config", "current-context"]),
+        );
     }
 
     /// Grava o contexto escolhido como padrão do kubeconfig (afeta seus outros terminais).
@@ -324,18 +333,36 @@ impl KubectlUtilApp {
     }
 
     fn load_pods(&mut self) {
-        let Some(namespace) = self.require_namespace() else { return };
+        let Some(namespace) = self.require_namespace() else {
+            return;
+        };
         self.kubectl(
             Action::PodNames,
-            command::args(&["get", "pods", "-n", &namespace, "-o", "custom-columns=:metadata.name"]),
+            command::args(&[
+                "get",
+                "pods",
+                "-n",
+                &namespace,
+                "-o",
+                "custom-columns=:metadata.name",
+            ]),
         );
     }
 
     fn load_services(&mut self) {
-        let Some(namespace) = self.require_namespace() else { return };
+        let Some(namespace) = self.require_namespace() else {
+            return;
+        };
         self.kubectl(
             Action::ServiceNames,
-            command::args(&["get", "svc", "-n", &namespace, "-o", "custom-columns=:metadata.name"]),
+            command::args(&[
+                "get",
+                "svc",
+                "-n",
+                &namespace,
+                "-o",
+                "custom-columns=:metadata.name",
+            ]),
         );
     }
 
@@ -344,18 +371,24 @@ impl KubectlUtilApp {
     }
 
     fn load_pod_explorer(&mut self) {
-        let Some(namespace) = self.require_namespace() else { return };
+        let Some(namespace) = self.require_namespace() else {
+            return;
+        };
         self.explorer_namespace = namespace.clone();
         self.kubectl(Action::PodExplorer, Self::pods_wide_args(&namespace));
     }
 
     fn run_pod_diagnostics(&mut self) {
-        let Some(namespace) = self.require_namespace() else { return };
+        let Some(namespace) = self.require_namespace() else {
+            return;
+        };
         // Reaproveita a última listagem; só consulta o kubectl se não houver uma.
         if !self.explorer_output.is_empty() && self.explorer_namespace == namespace {
             self.output_title = "Diagnóstico de Pods (cache local)".into();
             self.output = diagnose_pods(&self.explorer_output);
-            self.status = "Diagnóstico calculado a partir da última lista carregada; nenhuma nova consulta.".into();
+            self.status =
+                "Diagnóstico calculado a partir da última lista carregada; nenhuma nova consulta."
+                    .into();
         } else {
             self.explorer_namespace = namespace.clone();
             self.kubectl(Action::PodDiagnostics, Self::pods_wide_args(&namespace));
@@ -435,9 +468,15 @@ impl KubectlUtilApp {
             }
             StopOutcome::Stopped(pf) => {
                 self.status = if pf.backend.is_simulated() {
-                    format!("[MOCK] Port Forward simulado encerrado: {} em localhost:{}.", pf.target, pf.local_port)
+                    format!(
+                        "[MOCK] Port Forward simulado encerrado: {} em localhost:{}.",
+                        pf.target, pf.local_port
+                    )
                 } else {
-                    format!("Port Forward encerrado: {} em localhost:{}.", pf.target, pf.local_port)
+                    format!(
+                        "Port Forward encerrado: {} em localhost:{}.",
+                        pf.target, pf.local_port
+                    )
                 };
                 self.log_history(format!(
                     "{} | parar port-forward {} {}:{}",
@@ -454,7 +493,10 @@ impl KubectlUtilApp {
         let count = self.port_forwards.len();
         self.port_forwards.stop_all();
         self.status = format!("{count} Port Forward(s) encerrado(s).");
-        self.log_history(format!("{} | parar todos os port-forwards ({count})", timestamp()));
+        self.log_history(format!(
+            "{} | parar todos os port-forwards ({count})",
+            timestamp()
+        ));
     }
 
     /// Remove da lista (e explica) os port-forwards cujo processo terminou sozinho.
@@ -490,7 +532,10 @@ impl KubectlUtilApp {
     // ------------------------------------------------------------------
 
     fn load_profiles(&mut self) {
-        self.aws(Action::AwsProfiles, command::args(&["configure", "list-profiles"]));
+        self.aws(
+            Action::AwsProfiles,
+            command::args(&["configure", "list-profiles"]),
+        );
     }
 
     /// `aws sso login`: abre o navegador e espera a autorização (com limite de tempo).
@@ -524,7 +569,10 @@ impl KubectlUtilApp {
         }
         // Listagem somente de metadados: `describe-parameters` não retorna valores.
         self.params.pending_key = key;
-        self.aws(Action::SsmList, parameters::describe_args(&profile, &region, &path));
+        self.aws(
+            Action::SsmList,
+            parameters::describe_args(&profile, &region, &path),
+        );
     }
 
     fn clear_parameter_cache(&mut self) {
@@ -533,11 +581,8 @@ impl KubectlUtilApp {
     }
 
     fn reveal_selected_parameter(&mut self) {
-        let current_key = parameters::cache_key(
-            self.profile.trimmed(),
-            &self.region,
-            &self.params.path,
-        );
+        let current_key =
+            parameters::cache_key(self.profile.trimmed(), &self.region, &self.params.path);
         if self.params.loaded_key != current_key {
             self.status = "O perfil, a região ou o caminho mudou. Carregue os parâmetros para atualizar a seleção antes de consultar valores.".into();
             return;
@@ -555,7 +600,11 @@ impl KubectlUtilApp {
         let name = entry.name.clone();
 
         let args = parameters::get_args(&name, secure, self.profile.trimmed(), self.region.trim());
-        let action = if secure { Action::SsmRevealSecure } else { Action::SsmRevealPlain };
+        let action = if secure {
+            Action::SsmRevealSecure
+        } else {
+            Action::SsmRevealPlain
+        };
         self.params.hide_value();
         self.aws(action, args);
     }

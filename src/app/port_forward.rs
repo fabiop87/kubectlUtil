@@ -164,7 +164,7 @@ mod tests {
     #[cfg(unix)]
     mod unix {
         use super::*;
-        use crate::command::{args, BackgroundProcess};
+        use crate::command::{BackgroundProcess, args};
         use std::thread;
         use std::time::Duration;
 
@@ -182,7 +182,10 @@ mod tests {
         #[test]
         fn poll_exited_reports_dead_process_with_stderr() {
             let mut manager = PortForwardManager::default();
-            manager.push(real("echo 'unable to listen on port 5434' >&2; exit 1", "5434"));
+            manager.push(real(
+                "echo 'unable to listen on port 5434' >&2; exit 1",
+                "5434",
+            ));
             manager.push(real("sleep 30", "5435"));
             assert!(manager.has_processes());
 

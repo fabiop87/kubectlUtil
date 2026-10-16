@@ -14,7 +14,9 @@ pub fn diagnose_pods(source: &str) -> String {
     let flagged = flagged_lines(source);
     let mut report = String::from("Diagnóstico rápido (análise local da lista de Pods)\n\n");
     if flagged.is_empty() {
-        report.push_str("Nenhum estado suspeito foi identificado na saída. Isso não substitui logs/events.\n");
+        report.push_str(
+            "Nenhum estado suspeito foi identificado na saída. Isso não substitui logs/events.\n",
+        );
     }
     for line in &flagged {
         report.push_str("[ATENÇÃO] ");
@@ -139,7 +141,8 @@ dev         api-2   0/1     ImagePullBackOff   0          1d";
 
     #[test]
     fn report_mentions_clean_state_and_keeps_original_output() {
-        let source = "NAME    READY   STATUS    RESTARTS   AGE\napi-1   1/1     Running   0          1d";
+        let source =
+            "NAME    READY   STATUS    RESTARTS   AGE\napi-1   1/1     Running   0          1d";
         let report = diagnose_pods(source);
         assert!(report.contains("Nenhum estado suspeito"));
         assert!(report.contains("Saída original:"));

@@ -107,7 +107,12 @@ pub fn describe_args(profile: &str, region: &str, path: &str) -> Vec<String> {
 
 /// `get-parameter` de um único valor; `decrypt` só para `SecureString`.
 pub fn get_args(name: &str, decrypt: bool, profile: &str, region: &str) -> Vec<String> {
-    let mut args: Vec<String> = vec!["ssm".into(), "get-parameter".into(), "--name".into(), name.into()];
+    let mut args: Vec<String> = vec![
+        "ssm".into(),
+        "get-parameter".into(),
+        "--name".into(),
+        name.into(),
+    ];
     if decrypt {
         args.push("--with-decryption".into());
     }
@@ -156,7 +161,11 @@ mod tests {
     use super::*;
 
     fn entry(name: &str) -> ParameterEntry {
-        ParameterEntry { name: name.into(), kind: "String".into(), modified: "—".into() }
+        ParameterEntry {
+            name: name.into(),
+            kind: "String".into(),
+            modified: "—".into(),
+        }
     }
 
     #[test]
@@ -179,22 +188,32 @@ mod tests {
 
     #[test]
     fn parse_parameters_skips_entries_without_name() {
-        let entries = parse_parameters(r#"{"Parameters":[{"Type":"String"},{"Name":"/a"}]}"#).unwrap();
+        let entries =
+            parse_parameters(r#"{"Parameters":[{"Type":"String"},{"Name":"/a"}]}"#).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "/a");
     }
 
     #[test]
     fn cache_key_trims_each_part() {
-        assert_eq!(cache_key(" dev ", " sa-east-1", "/app/ "), "dev|sa-east-1|/app/");
+        assert_eq!(
+            cache_key(" dev ", " sa-east-1", "/app/ "),
+            "dev|sa-east-1|/app/"
+        );
     }
 
     #[test]
     fn describe_args_filter_by_prefix() {
         let args = describe_args("dev", "sa-east-1", "/app/");
         assert_eq!(args[3], "Key=Name,Option=BeginsWith,Values=/app/");
-        assert!(args.windows(2).any(|w| w[0] == "--profile" && w[1] == "dev"));
-        assert!(args.windows(2).any(|w| w[0] == "--region" && w[1] == "sa-east-1"));
+        assert!(
+            args.windows(2)
+                .any(|w| w[0] == "--profile" && w[1] == "dev")
+        );
+        assert!(
+            args.windows(2)
+                .any(|w| w[0] == "--region" && w[1] == "sa-east-1")
+        );
         assert!(!args.iter().any(|a| a == "--with-decryption"));
     }
 
@@ -211,8 +230,12 @@ mod tests {
 
     #[test]
     fn detects_invalid_credentials() {
-        assert!(is_invalid_credentials("An error occurred (UnrecognizedClientException) when calling"));
-        assert!(is_invalid_credentials("The security token included in the request is invalid."));
+        assert!(is_invalid_credentials(
+            "An error occurred (UnrecognizedClientException) when calling"
+        ));
+        assert!(is_invalid_credentials(
+            "The security token included in the request is invalid."
+        ));
         assert!(!is_invalid_credentials("AccessDeniedException"));
     }
 

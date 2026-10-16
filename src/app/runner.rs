@@ -4,7 +4,7 @@
 //! saber se o Modo Mock está ligado (comandos curtos e port-forward passam
 //! pela mesma interface).
 
-use super::mock::{mock_command_result, MockScenario};
+use super::mock::{MockScenario, mock_command_result};
 use crate::action::Action;
 use crate::command::{self, BackgroundProcess, CommandResult};
 use std::io;
@@ -50,7 +50,13 @@ impl Backend {
 
 pub trait Runner: Send + Sync {
     /// Executa um comando curto e devolve o resultado.
-    fn run(&self, action: Action, program: &str, args: &[String], cancel: &AtomicBool) -> CommandResult;
+    fn run(
+        &self,
+        action: Action,
+        program: &str,
+        args: &[String],
+        cancel: &AtomicBool,
+    ) -> CommandResult;
 
     /// Inicia um processo de longa duração. O `Err` já é uma mensagem para o usuário.
     fn start_background(&self, program: &str, args: &[String]) -> Result<Backend, String>;
@@ -59,7 +65,13 @@ pub trait Runner: Send + Sync {
 pub struct RealRunner;
 
 impl Runner for RealRunner {
-    fn run(&self, action: Action, program: &str, args: &[String], cancel: &AtomicBool) -> CommandResult {
+    fn run(
+        &self,
+        action: Action,
+        program: &str,
+        args: &[String],
+        cancel: &AtomicBool,
+    ) -> CommandResult {
         command::run(action, program, args, action.timeout(), cancel)
     }
 
@@ -75,7 +87,13 @@ pub struct MockRunner {
 }
 
 impl Runner for MockRunner {
-    fn run(&self, action: Action, program: &str, args: &[String], cancel: &AtomicBool) -> CommandResult {
+    fn run(
+        &self,
+        action: Action,
+        program: &str,
+        args: &[String],
+        cancel: &AtomicBool,
+    ) -> CommandResult {
         mock_command_result(action, program, args, self.scenario, cancel)
     }
 
@@ -93,10 +111,14 @@ mod tests {
 
     #[test]
     fn mock_runner_starts_simulated_backend_only_on_success() {
-        let ok = MockRunner { scenario: MockScenario::Success };
+        let ok = MockRunner {
+            scenario: MockScenario::Success,
+        };
         assert!(ok.start_background("kubectl", &[]).unwrap().is_simulated());
 
-        let failing = MockRunner { scenario: MockScenario::NoPermission };
+        let failing = MockRunner {
+            scenario: MockScenario::NoPermission,
+        };
         let error = failing.start_background("kubectl", &[]).err().unwrap();
         assert_eq!(error, MockScenario::NoPermission.message());
     }
@@ -113,7 +135,9 @@ mod tests {
     fn runners_are_object_safe_and_shareable() {
         let runners: Vec<std::sync::Arc<dyn Runner>> = vec![
             std::sync::Arc::new(RealRunner),
-            std::sync::Arc::new(MockRunner { scenario: MockScenario::Success }),
+            std::sync::Arc::new(MockRunner {
+                scenario: MockScenario::Success,
+            }),
         ];
         let result = runners[1].run(Action::Namespaces, "kubectl", &[], &AtomicBool::new(false));
         assert!(result.success);

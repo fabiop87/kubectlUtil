@@ -4,7 +4,7 @@
 //! nova `Action`, o compilador exige decidir qual é a saída simulada dela.
 
 use crate::action::Action;
-use crate::command::{CommandResult, CANCELLED_MESSAGE};
+use crate::command::{CANCELLED_MESSAGE, CommandResult};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -60,17 +60,35 @@ pub fn mock_command_result(
     match scenario {
         MockScenario::Timeout => {
             if sleep_unless_cancelled(Duration::from_secs(3), cancel) {
-                return CommandResult { action, output: CANCELLED_MESSAGE.into(), success: false };
+                return CommandResult {
+                    action,
+                    output: CANCELLED_MESSAGE.into(),
+                    success: false,
+                };
             }
-            CommandResult { action, output: scenario.message().into(), success: false }
+            CommandResult {
+                action,
+                output: scenario.message().into(),
+                success: false,
+            }
         }
-        MockScenario::Error | MockScenario::NoPermission => {
-            CommandResult { action, output: scenario.message().into(), success: false }
-        }
-        MockScenario::EmptyList => CommandResult { action, output: empty_output(action), success: true },
+        MockScenario::Error | MockScenario::NoPermission => CommandResult {
+            action,
+            output: scenario.message().into(),
+            success: false,
+        },
+        MockScenario::EmptyList => CommandResult {
+            action,
+            output: empty_output(action),
+            success: true,
+        },
         MockScenario::Success => {
             let joined = args.join(" ");
-            CommandResult { action, output: success_output(action, program, &joined), success: true }
+            CommandResult {
+                action,
+                output: success_output(action, program, &joined),
+                success: true,
+            }
         }
     }
 }
@@ -145,7 +163,13 @@ mod tests {
     use super::*;
 
     fn run(action: Action, scenario: MockScenario) -> CommandResult {
-        mock_command_result(action, "kubectl", &["get".to_string()], scenario, &AtomicBool::new(false))
+        mock_command_result(
+            action,
+            "kubectl",
+            &["get".to_string()],
+            scenario,
+            &AtomicBool::new(false),
+        )
     }
 
     #[test]
@@ -169,14 +193,24 @@ mod tests {
         let result = run(Action::SsmList, MockScenario::EmptyList);
         assert!(result.success);
         assert_eq!(result.output, r#"{"Parameters":[]}"#);
-        assert!(run(Action::Namespaces, MockScenario::EmptyList).output.is_empty());
+        assert!(
+            run(Action::Namespaces, MockScenario::EmptyList)
+                .output
+                .is_empty()
+        );
     }
 
     #[test]
     fn timeout_scenario_can_be_cancelled() {
         let cancel = AtomicBool::new(true);
         let started = Instant::now();
-        let result = mock_command_result(Action::Nodes, "kubectl", &[], MockScenario::Timeout, &cancel);
+        let result = mock_command_result(
+            Action::Nodes,
+            "kubectl",
+            &[],
+            MockScenario::Timeout,
+            &cancel,
+        );
         assert!(!result.success);
         assert_eq!(result.output, CANCELLED_MESSAGE);
         assert!(started.elapsed() < Duration::from_secs(1));
@@ -187,7 +221,11 @@ mod tests {
         let result = mock_command_result(
             Action::UseContext,
             "kubectl",
-            &["config".to_string(), "use-context".to_string(), "dev".to_string()],
+            &[
+                "config".to_string(),
+                "use-context".to_string(),
+                "dev".to_string(),
+            ],
             MockScenario::Success,
             &AtomicBool::new(false),
         );

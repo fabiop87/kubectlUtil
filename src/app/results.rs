@@ -1,10 +1,10 @@
 //! O que fazer quando um comando termina: atualizar listas, painel de saída,
 //! histórico e o estado do Parameter Store.
 
+use super::KubectlUtilApp;
 use super::diagnostics::diagnose_pods;
 use super::parameters::{is_invalid_credentials, parse_parameters};
 use super::util::timestamp;
-use super::KubectlUtilApp;
 use crate::action::Action;
 use crate::command::CommandResult;
 
@@ -24,7 +24,11 @@ impl KubectlUtilApp {
             return;
         }
 
-        self.status = if result.success { "Concluído".into() } else { "Com erro — veja a saída".into() };
+        self.status = if result.success {
+            "Concluído".into()
+        } else {
+            "Com erro — veja a saída".into()
+        };
 
         if result.action.is_secret() {
             self.handle_secret_result(result);
@@ -34,7 +38,12 @@ impl KubectlUtilApp {
         self.output_title = result.action.title().into();
         self.output = result.output.clone();
         let outcome = if result.success { "OK" } else { "ERRO" };
-        self.log_history(format!("{} | {} | {}", timestamp(), result.action.title(), outcome));
+        self.log_history(format!(
+            "{} | {} | {}",
+            timestamp(),
+            result.action.title(),
+            outcome
+        ));
 
         if result.success {
             self.apply_success(&result);
@@ -61,7 +70,11 @@ impl KubectlUtilApp {
             result.output
         };
         let outcome = if ok { "OK" } else { "ERRO" };
-        self.log_history(format!("{} | consulta de valor de parâmetro | {}", timestamp(), outcome));
+        self.log_history(format!(
+            "{} | consulta de valor de parâmetro | {}",
+            timestamp(),
+            outcome
+        ));
     }
 
     /// Atualiza listas e estados a partir de um resultado bem-sucedido.
@@ -92,7 +105,9 @@ impl KubectlUtilApp {
             }
             Action::AwsProfiles => {
                 self.profile.items = non_empty_lines(&result.output);
-                if !self.profile.items.is_empty() && !self.profile.items.contains(&self.profile.value) {
+                if !self.profile.items.is_empty()
+                    && !self.profile.items.contains(&self.profile.value)
+                {
                     self.profile.value = self.profile.items[0].clone();
                 }
             }
@@ -112,7 +127,8 @@ impl KubectlUtilApp {
                     );
                 }
                 Err(e) => {
-                    self.status = format!("Não foi possível interpretar o JSON do Parameter Store: {e}");
+                    self.status =
+                        format!("Não foi possível interpretar o JSON do Parameter Store: {e}");
                 }
             },
             _ => {}

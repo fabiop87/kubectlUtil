@@ -55,12 +55,19 @@ pub fn run(
     cancel: &AtomicBool,
 ) -> CommandResult {
     let mut command = base_command(program, args);
-    command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(e) => {
-            return CommandResult { action, output: spawn_error_message(program, &e), success: false };
+            return CommandResult {
+                action,
+                output: spawn_error_message(program, &e),
+                success: false,
+            };
         }
     };
 
@@ -89,7 +96,11 @@ pub fn run(
             ),
             success: false,
         },
-        Outcome::Cancelled => CommandResult { action, output: CANCELLED_MESSAGE.into(), success: false },
+        Outcome::Cancelled => CommandResult {
+            action,
+            output: CANCELLED_MESSAGE.into(),
+            success: false,
+        },
         Outcome::WaitFailed(e) => CommandResult {
             action,
             output: format!("Falha ao aguardar o processo '{program}': {e}"),
@@ -171,7 +182,10 @@ pub struct BackgroundProcess {
 impl BackgroundProcess {
     pub fn spawn(program: &str, args: &[String]) -> io::Result<Self> {
         let mut command = base_command(program, args);
-        command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         let mut child = command.spawn()?;
 
         if let Some(mut stdout) = child.stdout.take() {
@@ -199,7 +213,11 @@ impl BackgroundProcess {
             })
         });
 
-        Ok(Self { child, stderr_tail, stderr_reader })
+        Ok(Self {
+            child,
+            stderr_tail,
+            stderr_reader,
+        })
     }
 
     /// `Ok(Some(status))` quando o processo já terminou.
@@ -258,16 +276,28 @@ mod tests {
 
     #[test]
     fn combine_output_covers_all_cases() {
-        assert_eq!(combine_output("out", "err", true, "0"), "out\n\n[stderr]\nerr");
+        assert_eq!(
+            combine_output("out", "err", true, "0"),
+            "out\n\n[stderr]\nerr"
+        );
         assert_eq!(combine_output("out", "", true, "0"), "out");
         assert_eq!(combine_output("", "err", false, "1"), "err");
-        assert_eq!(combine_output("", "", true, "0"), "Comando concluído sem saída.");
-        assert_eq!(combine_output("", "", false, "1"), "Comando terminou com status 1.");
+        assert_eq!(
+            combine_output("", "", true, "0"),
+            "Comando concluído sem saída."
+        );
+        assert_eq!(
+            combine_output("", "", false, "1"),
+            "Comando terminou com status 1."
+        );
     }
 
     #[test]
     fn args_converts_to_owned_strings() {
-        assert_eq!(args(&["get", "pods"]), vec!["get".to_string(), "pods".to_string()]);
+        assert_eq!(
+            args(&["get", "pods"]),
+            vec!["get".to_string(), "pods".to_string()]
+        );
     }
 
     #[test]
@@ -295,7 +325,13 @@ mod tests {
         #[test]
         fn run_captures_stdout() {
             let cancel = AtomicBool::new(false);
-            let result = run(Action::Nodes, "sh", &sh("echo ola"), Duration::from_secs(5), &cancel);
+            let result = run(
+                Action::Nodes,
+                "sh",
+                &sh("echo ola"),
+                Duration::from_secs(5),
+                &cancel,
+            );
             assert!(result.success);
             assert_eq!(result.output, "ola");
         }
@@ -303,7 +339,13 @@ mod tests {
         #[test]
         fn run_reports_failure_with_stderr() {
             let cancel = AtomicBool::new(false);
-            let result = run(Action::Nodes, "sh", &sh("echo falhou >&2; exit 3"), Duration::from_secs(5), &cancel);
+            let result = run(
+                Action::Nodes,
+                "sh",
+                &sh("echo falhou >&2; exit 3"),
+                Duration::from_secs(5),
+                &cancel,
+            );
             assert!(!result.success);
             assert!(result.output.contains("falhou"));
         }
@@ -312,7 +354,13 @@ mod tests {
         fn run_enforces_timeout() {
             let cancel = AtomicBool::new(false);
             let started = Instant::now();
-            let result = run(Action::Nodes, "sh", &sh("sleep 10"), Duration::from_millis(200), &cancel);
+            let result = run(
+                Action::Nodes,
+                "sh",
+                &sh("sleep 10"),
+                Duration::from_millis(200),
+                &cancel,
+            );
             assert!(!result.success);
             assert!(result.output.contains("Tempo limite"));
             assert!(started.elapsed() < Duration::from_secs(5));
@@ -326,7 +374,13 @@ mod tests {
                 thread::sleep(Duration::from_millis(150));
                 flag.store(true, Ordering::Relaxed);
             });
-            let result = run(Action::Nodes, "sh", &sh("sleep 10"), Duration::from_secs(30), &cancel);
+            let result = run(
+                Action::Nodes,
+                "sh",
+                &sh("sleep 10"),
+                Duration::from_secs(30),
+                &cancel,
+            );
             canceller.join().unwrap();
             assert!(!result.success);
             assert_eq!(result.output, CANCELLED_MESSAGE);
@@ -334,7 +388,8 @@ mod tests {
 
         #[test]
         fn background_process_exposes_exit_and_stderr() {
-            let mut process = BackgroundProcess::spawn("sh", &sh("echo erro-de-porta >&2; exit 3")).unwrap();
+            let mut process =
+                BackgroundProcess::spawn("sh", &sh("echo erro-de-porta >&2; exit 3")).unwrap();
             let mut status = None;
             for _ in 0..100 {
                 status = process.try_wait().unwrap();
