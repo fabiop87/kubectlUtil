@@ -7,11 +7,11 @@ use eframe::egui;
 impl KubectlUtilApp {
     pub(super) fn show_parameters(&mut self, ui: &mut egui::Ui) {
         self.show_parameter_list(ui);
-        ui.add_space(12.0);
+        //ui.add_space(8.0);
         self.show_parameter_value(ui);
 
         let muted = palette_of(ui).muted;
-        ui.add_space(8.0);
+        //ui.add_space(8.0);
         ui.label(
             egui::RichText::new(
                 "Os resultados ficam em cache em memória por perfil, região e caminho até atualizar, trocar a consulta ou fechar o aplicativo. SecureString só é descriptografado quando você solicita o valor.",
@@ -29,8 +29,11 @@ impl KubectlUtilApp {
             Some("Somente leitura. O aplicativo não cria, altera nem exclui parâmetros."),
             |ui| {
                 ui.label(
-                    egui::RichText::new(format!("Perfil: {}    Região: {}", self.profile.value, self.region))
-                        .color(muted),
+                    egui::RichText::new(format!(
+                        "Perfil: {}    Região: {}",
+                        self.profile.value, self.region
+                    ))
+                    .color(muted),
                 );
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Caminho");
@@ -42,10 +45,16 @@ impl KubectlUtilApp {
                     if primary_button(ui, !self.busy, "Carregar (usar cache)").clicked() {
                         self.load_parameters(false);
                     }
-                    if ui.add_enabled(!self.busy, egui::Button::new("Atualizar da AWS")).clicked() {
+                    if ui
+                        .add_enabled(!self.busy, egui::Button::new("Atualizar da AWS"))
+                        .clicked()
+                    {
                         self.load_parameters(true);
                     }
-                    if ui.add_enabled(!self.busy, egui::Button::new("Limpar cache")).clicked() {
+                    if ui
+                        .add_enabled(!self.busy, egui::Button::new("Limpar cache"))
+                        .clicked()
+                    {
                         self.clear_parameter_cache();
                     }
                 });
@@ -56,35 +65,47 @@ impl KubectlUtilApp {
                             .desired_width(280.0)
                             .hint_text("Digite parte do nome"),
                     );
-                    ui.label(egui::RichText::new(format!("{} parâmetros em memória", self.params.entries.len())).color(muted));
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} parâmetros em memória",
+                            self.params.entries.len()
+                        ))
+                        .color(muted),
+                    );
                 });
 
                 egui::ScrollArea::vertical()
                     .id_salt("parameter_store_scroll_area")
                     .max_height(220.0)
                     .show(ui, |ui| {
-                        egui::Grid::new("ssm_parameters_grid").striped(true).spacing([18.0, 6.0]).show(ui, |ui| {
-                            ui.strong("Nome");
-                            ui.strong("Tipo");
-                            ui.strong("Última modificação");
-                            ui.end_row();
-                            let filter = self.params.filter.to_lowercase();
-                            let visible: Vec<_> = self
-                                .params
-                                .entries
-                                .iter()
-                                .filter(|p| p.name.to_lowercase().contains(&filter))
-                                .cloned()
-                                .collect();
-                            for p in visible {
-                                if ui.selectable_label(self.params.selected == p.name, &p.name).clicked() {
-                                    self.params.select(p.name.clone());
-                                }
-                                ui.label(&p.kind);
-                                ui.label(&p.modified);
+                        egui::Grid::new("ssm_parameters_grid")
+                            .striped(true)
+                            .spacing([18.0, 6.0])
+                            .show(ui, |ui| {
+                                ui.strong("Nome");
+                                ui.strong("Tipo");
+                                ui.strong("Última modificação");
                                 ui.end_row();
-                            }
-                        });
+                                let filter = self.params.filter.to_lowercase();
+                                let visible: Vec<_> = self
+                                    .params
+                                    .entries
+                                    .iter()
+                                    .filter(|p| p.name.to_lowercase().contains(&filter))
+                                    .cloned()
+                                    .collect();
+                                for p in visible {
+                                    if ui
+                                        .selectable_label(self.params.selected == p.name, &p.name)
+                                        .clicked()
+                                    {
+                                        self.params.select(p.name.clone());
+                                    }
+                                    ui.label(&p.kind);
+                                    ui.label(&p.modified);
+                                    ui.end_row();
+                                }
+                            });
                     });
             },
         );
@@ -95,7 +116,9 @@ impl KubectlUtilApp {
         card(
             ui,
             "Valor do parâmetro",
-            Some("Consulta individual e sob demanda; o valor não vai ao histórico nem ao log geral."),
+            Some(
+                "Consulta individual e sob demanda; o valor não vai ao histórico nem ao log geral.",
+            ),
             |ui| {
                 ui.horizontal_wrapped(|ui| {
                     let selected = if self.params.selected.is_empty() {

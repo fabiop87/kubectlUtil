@@ -2,26 +2,28 @@
 //! explorador de Pods, troubleshooting e Port Forward.
 
 use super::widgets::{card, danger_button, field_combo, palette_of, primary_button};
-use crate::app::presets;
 use crate::app::KubectlUtilApp;
+use crate::app::presets;
 use eframe::egui;
 
 impl KubectlUtilApp {
     pub(super) fn show_connection(&mut self, ui: &mut egui::Ui) {
         self.show_connection_selectors(ui);
-        ui.add_space(12.0);
-        self.show_pod_explorer(ui);
-        ui.add_space(12.0);
-        self.show_troubleshooting(ui);
-        ui.add_space(12.0);
+        //ui.add_space(8.0);
         self.show_port_forward(ui);
+        //ui.add_space(8.0);
+        self.show_pod_explorer(ui);
+        //ui.add_space(8.0);
+        self.show_troubleshooting(ui);
     }
 
     fn show_connection_selectors(&mut self, ui: &mut egui::Ui) {
         card(
             ui,
             "Conexão Kubernetes",
-            Some("O aplicativo usa o contexto e o namespace escolhidos aqui em todas as consultas."),
+            Some(
+                "O aplicativo usa o contexto e o namespace escolhidos aqui em todas as consultas.",
+            ),
             |ui| {
                 ui.horizontal_wrapped(|ui| {
                     let previous_context = self.context.value.clone();
@@ -96,7 +98,11 @@ impl KubectlUtilApp {
                         .id_salt("workloads_pods_scroll_area")
                         .max_height(150.0)
                         .show(ui, |ui| {
-                            for line in self.explorer_output.lines().filter(|l| l.to_lowercase().contains(&needle)) {
+                            for line in self
+                                .explorer_output
+                                .lines()
+                                .filter(|l| l.to_lowercase().contains(&needle))
+                            {
                                 ui.monospace(line);
                             }
                         });
@@ -106,14 +112,19 @@ impl KubectlUtilApp {
     }
 
     fn show_troubleshooting(&mut self, ui: &mut egui::Ui) {
-        card(ui, "Troubleshooting", Some("Ferramentas para o Pod selecionado."), |ui| {
-            ui.horizontal_wrapped(|ui| {
-                self.preset_buttons(ui, presets::POD_TOOLS);
-                if ui.button("Bash no Pod").clicked() {
-                    self.show_exec_hint();
-                }
-            });
-        });
+        card(
+            ui,
+            "Troubleshooting",
+            Some("Ferramentas para o Pod selecionado."),
+            |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    self.preset_buttons(ui, presets::POD_TOOLS);
+                    if ui.button("Bash no Pod").clicked() {
+                        self.show_exec_hint();
+                    }
+                });
+            },
+        );
     }
 
     /// Bash interativo precisa de um terminal: mostra o comando pronto para copiar.
@@ -125,7 +136,11 @@ impl KubectlUtilApp {
             return;
         }
         let context = self.context.trimmed();
-        let context_flag = if context.is_empty() { String::new() } else { format!(" --context {context}") };
+        let context_flag = if context.is_empty() {
+            String::new()
+        } else {
+            format!(" --context {context}")
+        };
         self.status = "Bash interativo requer terminal externo; use o comando abaixo.".into();
         self.output_title = "Bash no Pod".into();
         self.output = format!(
@@ -165,7 +180,7 @@ impl KubectlUtilApp {
                 });
 
                 if !self.port_forwards.is_empty() {
-                    ui.add_space(6.0);
+                    //ui.add_space(6.0);
                     self.show_active_port_forwards(ui);
                 }
             },
@@ -184,11 +199,14 @@ impl KubectlUtilApp {
                 let mut stop_all = false;
 
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("●").size(16.0).color(p.success));
+                    ui.label(egui::RichText::new("●").size(12.0).color(p.success));
                     ui.label(
-                        egui::RichText::new(format!("{} port forward(s) ativo(s)", self.port_forwards.len()))
-                            .strong()
-                            .color(p.success),
+                        egui::RichText::new(format!(
+                            "{} port forward(s) ativo(s)",
+                            self.port_forwards.len()
+                        ))
+                        .strong()
+                        .color(p.success),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if danger_button(ui, "■ Parar todos").clicked() {
@@ -196,7 +214,7 @@ impl KubectlUtilApp {
                         }
                     });
                 });
-                ui.add_space(4.0);
+                //ui.add_space(4.0);
 
                 let mut stop_index: Option<usize> = None;
 
@@ -209,15 +227,30 @@ impl KubectlUtilApp {
                             ui.set_min_width(ui.available_width());
                             ui.horizontal_wrapped(|ui| {
                                 ui.label(
-                                    egui::RichText::new(format!("localhost:{} → {}", pf.local_port, pf.remote_port))
-                                        .strong()
-                                        .monospace(),
+                                    egui::RichText::new(format!(
+                                        "localhost:{} → {}",
+                                        pf.local_port, pf.remote_port
+                                    ))
+                                    .strong()
+                                    .monospace(),
                                 );
-                                ui.label(egui::RichText::new(format!("{} · {}", pf.target, pf.namespace)).color(p.muted));
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "{} · {}",
+                                        pf.target, pf.namespace
+                                    ))
+                                    .color(p.muted),
+                                );
                                 if pf.backend.is_simulated() {
-                                    ui.label(egui::RichText::new("MOCK").small().strong().color(p.accent_dark));
+                                    ui.label(
+                                        egui::RichText::new("MOCK")
+                                            .small()
+                                            .strong()
+                                            .color(p.accent_dark),
+                                    );
                                 }
-                                if danger_button(ui, &format!("■ Parar #{}", index + 1)).clicked() {
+                                if danger_button(ui, &format!("■ Parar #{}", index + 1)).clicked()
+                                {
                                     stop_index = Some(index);
                                 }
                             });

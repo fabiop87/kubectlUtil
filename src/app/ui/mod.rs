@@ -19,11 +19,13 @@ use self::widgets::{card_frame, chip, danger_button, palette_of};
 
 impl eframe::App for KubectlUtilApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let p = theme::palette(ctx.style().visuals.dark_mode);
+        // let p = theme::palette(ctx.style().visuals.dark_mode);
+        let p = theme::palette(self.dark_mode);
 
         // Evita que áreas não cobertas pelos painéis fiquem pretas ao alternar o Mock.
         let screen_rect = ctx.screen_rect();
-        ctx.layer_painter(egui::LayerId::background()).rect_filled(screen_rect, 0.0, p.bg);
+        ctx.layer_painter(egui::LayerId::background())
+            .rect_filled(screen_rect, 0.0, p.bg);
 
         while let Ok(result) = self.rx.try_recv() {
             self.handle_result(result);
@@ -41,35 +43,54 @@ impl eframe::App for KubectlUtilApp {
             .resizable(true)
             .default_height(350.0)
             .min_height(200.0)
-            .frame(egui::Frame::new().fill(p.bg).inner_margin(egui::Margin::symmetric(24, 14)))
+            .frame(
+                egui::Frame::new()
+                    .fill(p.bg)
+                    .inner_margin(egui::Margin::symmetric(24, 14)),
+            )
             .show(ctx, |ui| self.show_output_panel(ui));
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(p.bg).inner_margin(egui::Margin::symmetric(24, 20)))
+            .frame(
+                egui::Frame::new()
+                    .fill(p.bg)
+                    .inner_margin(egui::Margin::symmetric(24, 20)),
+            )
             .show(ctx, |ui| {
-                egui::ScrollArea::vertical().id_salt("central_scroll_area").auto_shrink([false, false]).show(ui, |ui| {
-                    ui.label(egui::RichText::new(self.section.label()).size(26.0).strong());
-                    ui.label(egui::RichText::new("Execute somente as consultas necessárias.").color(p.muted));
-                    ui.add_space(14.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("central_scroll_area")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.label(
+                            egui::RichText::new(self.section.label())
+                                .size(20.0)
+                                .strong()
+                                .color(p.text),
+                        );
+                        ui.label(
+                            egui::RichText::new("Execute somente as consultas necessárias.")
+                                .color(p.text),
+                        );
+                        //ui.add_space(10.0);
 
-                    if self.section != Section::Connection {
-                        self.show_context_bar(ui);
-                        ui.add_space(12.0);
-                    }
+                        if self.section != Section::Connection {
+                            self.show_context_bar(ui);
+                            //ui.add_space(5.0);
+                        }
 
-                    match self.section {
-                        Section::Overview => self.show_overview(ui),
-                        Section::Connection => self.show_connection(ui),
-                        Section::Cluster => self.show_cluster(ui),
-                        Section::Network => self.show_network(ui),
-                        Section::Aws => self.show_aws(ui),
-                        Section::Parameters => self.show_parameters(ui),
-                    }
+                        match self.section {
+                            Section::Overview => self.show_overview(ui),
+                            Section::Connection => self.show_connection(ui),
+                            Section::Cluster => self.show_cluster(ui),
+                            Section::Network => self.show_network(ui),
+                            Section::Aws => self.show_aws(ui),
+                            Section::Parameters => self.show_parameters(ui),
+                        }
 
-                    ui.add_space(12.0);
-                    self.show_history(ui);
-                    ui.add_space(8.0);
-                });
+                        //ui.add_space(5.0);
+                        self.show_history(ui);
+                        //ui.add_space(6.0);
+                    });
             });
     }
 }
@@ -79,17 +100,35 @@ impl KubectlUtilApp {
         egui::SidePanel::left("navigation")
             .exact_width(220.0)
             .resizable(false)
-            .frame(egui::Frame::new().fill(p.surface).inner_margin(egui::Margin::same(16)))
+            .frame(
+                egui::Frame::new()
+                    .fill(p.surface)
+                    .inner_margin(egui::Margin::same(16)),
+            )
             .show(ctx, |ui| {
-                ui.add_space(4.0);
-                ui.label(egui::RichText::new("◈ kubectlUtil").size(21.0).strong().color(p.accent));
-                ui.label(egui::RichText::new("Kubernetes & AWS").small().color(p.muted));
-                ui.add_space(14.0);
+                //ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new("◈ kubectlUtil")
+                        .size(21.0)
+                        .strong()
+                        .color(p.accent),
+                );
+                ui.label(
+                    egui::RichText::new("Kubernetes & AWS")
+                        .small()
+                        .color(p.muted),
+                );
+                //ui.add_space(10.0);
 
                 self.show_mock_controls(ui, p);
 
-                ui.add_space(16.0);
-                ui.label(egui::RichText::new("SEÇÕES").small().strong().color(p.muted));
+                //ui.add_space(12.0);
+                ui.label(
+                    egui::RichText::new("SEÇÕES")
+                        .small()
+                        .strong()
+                        .color(p.muted),
+                );
                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                     for section in [
                         Section::Connection,
@@ -105,8 +144,12 @@ impl KubectlUtilApp {
 
                 // Rodapé fixo na base do painel.
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                    ui.label(egui::RichText::new("As consultas são feitas sob demanda.").small().color(p.muted));
-                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new("As consultas são feitas sob demanda.")
+                            .small()
+                            .color(p.muted),
+                    );
+                    //ui.add_space(6.0);
                     self.show_theme_toggle(ctx, ui);
                 });
             });
@@ -124,14 +167,22 @@ impl KubectlUtilApp {
                     ui.checkbox(&mut self.mock_mode, "Modo Mock (sem rede)");
                 });
                 if self.mock_mode {
-                    ui.label(egui::RichText::new("Nenhum comando real será executado.").small().color(p.success));
+                    ui.label(
+                        egui::RichText::new("Nenhum comando real será executado.")
+                            .small()
+                            .color(p.success),
+                    );
                     ui.label(egui::RichText::new("Cenário").small().color(p.muted));
                     egui::ComboBox::from_id_salt("mock_scenario")
                         .selected_text(self.mock_scenario.label())
                         .width(150.0)
                         .show_ui(ui, |ui| {
                             for scenario in MockScenario::ALL {
-                                ui.selectable_value(&mut self.mock_scenario, scenario, scenario.label());
+                                ui.selectable_value(
+                                    &mut self.mock_scenario,
+                                    scenario,
+                                    scenario.label(),
+                                );
                             }
                         });
                 }
@@ -142,8 +193,15 @@ impl KubectlUtilApp {
     }
 
     fn show_theme_toggle(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        let label = if self.dark_mode { "☀  Tema claro" } else { "🌙  Tema escuro" };
-        if ui.add_sized([ui.available_width(), 32.0], egui::Button::new(label)).clicked() {
+        let label = if self.dark_mode {
+            "☀  Tema claro"
+        } else {
+            "🌙  Tema escuro"
+        };
+        if ui
+            .add_sized([ui.available_width(), 32.0], egui::Button::new(label))
+            .clicked()
+        {
             self.dark_mode = !self.dark_mode;
             theme::set_dark(ctx, self.dark_mode);
         }
@@ -151,14 +209,24 @@ impl KubectlUtilApp {
 
     fn nav_button(&mut self, ui: &mut egui::Ui, section: Section) {
         let selected = self.section == section;
-        let mut text = egui::RichText::new(section.label());
+        let p = theme::palette(self.dark_mode);
+
+        let mut text = egui::RichText::new(section.label()).color(p.text);
+
         if selected {
             text = text.strong();
         }
-        let mut button = egui::Button::new(text).min_size(egui::vec2(0.0, 38.0)).selected(selected);
+        if selected {
+            text = text.strong();
+        }
+        let mut button = egui::Button::new(text)
+            .min_size(egui::vec2(0.0, 30.0))
+            .selected(selected);
         if !selected {
             // Itens inativos sem moldura; o destaque aparece ao passar o mouse.
-            button = button.fill(egui::Color32::TRANSPARENT).stroke(egui::Stroke::NONE);
+            button = button
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE);
         }
         if ui.add(button).clicked() {
             self.section = section;
@@ -168,8 +236,16 @@ impl KubectlUtilApp {
     fn show_context_bar(&mut self, ui: &mut egui::Ui) {
         let context_set = !self.context.value.is_empty();
         let namespace_set = !self.namespace.value.is_empty();
-        let context = if context_set { self.context.value.clone() } else { "não selecionado".to_string() };
-        let namespace = if namespace_set { self.namespace.value.clone() } else { "não selecionado".to_string() };
+        let context = if context_set {
+            self.context.value.clone()
+        } else {
+            "não selecionado".to_string()
+        };
+        let namespace = if namespace_set {
+            self.namespace.value.clone()
+        } else {
+            "não selecionado".to_string()
+        };
         ui.horizontal_wrapped(|ui| {
             chip(ui, "Contexto", &context, context_set);
             chip(ui, "Namespace", &namespace, namespace_set);
@@ -182,8 +258,13 @@ impl KubectlUtilApp {
     fn show_output_panel(&mut self, ui: &mut egui::Ui) {
         let p = palette_of(ui);
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(self.output_title.as_str()).size(16.0).strong());
-            ui.add_space(6.0);
+            ui.label(
+                egui::RichText::new(self.output_title.as_str())
+                    .size(16.0)
+                    .strong()
+                    .color(p.text),
+            );
+            //ui.add_space(6.0);
             if self.busy {
                 ui.spinner();
                 ui.label("Executando…");
@@ -207,7 +288,7 @@ impl KubectlUtilApp {
                 }
             });
         });
-        ui.add_space(8.0);
+        //ui.add_space(6.0);
 
         // Console escuro: legível nos dois temas.
         egui::Frame::new()
@@ -249,9 +330,13 @@ impl KubectlUtilApp {
         card_frame(&p).show(ui, |ui| {
             ui.set_min_width(ui.available_width());
             egui::CollapsingHeader::new(
-                egui::RichText::new(format!("Histórico local de operações ({} entradas)", self.history.len()))
-                    .size(15.0)
-                    .strong(),
+                egui::RichText::new(format!(
+                    "Histórico local de operações ({} entradas)",
+                    self.history.len()
+                ))
+                .size(12.0)
+                .strong()
+                .color(p.text),
             )
             .default_open(false)
             .show(ui, |ui| {
@@ -264,11 +349,14 @@ impl KubectlUtilApp {
                         self.history.clear();
                     }
                 });
-                egui::ScrollArea::vertical().id_salt("history_scroll_area").max_height(120.0).show(ui, |ui| {
-                    for item in self.history.iter().rev().take(50) {
-                        ui.monospace(item);
-                    }
-                });
+                egui::ScrollArea::vertical()
+                    .id_salt("history_scroll_area")
+                    .max_height(120.0)
+                    .show(ui, |ui| {
+                        for item in self.history.iter().rev().take(50) {
+                            ui.monospace(item);
+                        }
+                    });
             });
         });
     }

@@ -58,21 +58,21 @@ pub fn palette(dark: bool) -> Palette {
         }
     } else {
         Palette {
-            bg: rgb(0xF3F5FA),
-            surface: rgb(0xFFFFFF),
+            bg: rgb(0xCED0D4),
+            surface: rgb(0xD9D9D9),
             surface_alt: rgb(0xF1F5F9),
             input_bg: rgb(0xF8FAFC),
             border: rgb(0xE2E8F0),
             text: rgb(0x1E293B),
-            muted: rgb(0x64748B),
+            muted: rgb(0x475569),
             accent: rgb(0x4F46E5),
             accent_soft: rgb(0xE0E7FF),
             accent_dark: rgb(0x3730A3),
-            on_accent: rgb(0xFFFFFF),
+            on_accent: rgb(0xD9D9D9),
             success: rgb(0x15803D),
             success_soft: rgb(0xDCFCE7),
             danger: rgb(0xDC2626),
-            on_danger: rgb(0xFFFFFF),
+            on_danger: rgb(0xD9D9D9),
             console_bg: rgb(0x0F172A),
             console_text: rgb(0xE2E8F0),
         }
@@ -87,23 +87,42 @@ pub fn install(ctx: &egui::Context) {
 }
 
 pub fn set_dark(ctx: &egui::Context, dark: bool) {
-    ctx.set_theme(if dark { egui::Theme::Dark } else { egui::Theme::Light });
+    ctx.set_theme(if dark {
+        egui::Theme::Dark
+    } else {
+        egui::Theme::Light
+    });
 }
 
 fn build_style(dark: bool) -> egui::Style {
     let p = palette(dark);
     let mut style = egui::Style {
-        visuals: if dark { egui::Visuals::dark() } else { egui::Visuals::light() },
+        visuals: if dark {
+            egui::Visuals::dark()
+        } else {
+            egui::Visuals::light()
+        },
         ..Default::default()
     };
 
     // Tipografia
     let proportional = |size: f32| FontId::new(size, FontFamily::Proportional);
-    style.text_styles.insert(TextStyle::Heading, proportional(20.0));
-    style.text_styles.insert(TextStyle::Body, proportional(14.0));
-    style.text_styles.insert(TextStyle::Button, proportional(14.0));
-    style.text_styles.insert(TextStyle::Small, proportional(11.5));
-    style.text_styles.insert(TextStyle::Monospace, FontId::new(13.0, FontFamily::Monospace));
+    style
+        .text_styles
+        .insert(TextStyle::Heading, proportional(20.0));
+    style
+        .text_styles
+        .insert(TextStyle::Body, proportional(14.0));
+    style
+        .text_styles
+        .insert(TextStyle::Button, proportional(14.0));
+    style
+        .text_styles
+        .insert(TextStyle::Small, proportional(11.5));
+    style.text_styles.insert(
+        TextStyle::Monospace,
+        FontId::new(11.0, FontFamily::Monospace),
+    );
 
     // Espaçamento compacto, sem deixar os controles apertados.
     style.spacing.item_spacing = egui::vec2(6.0, 5.0);
@@ -193,7 +212,11 @@ mod tests {
     fn luminance(c: Color32) -> f64 {
         let channel = |v: u8| {
             let v = f64::from(v) / 255.0;
-            if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+            if v <= 0.03928 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
         };
         0.2126 * channel(c.r()) + 0.7152 * channel(c.g()) + 0.0722 * channel(c.b())
     }
@@ -222,7 +245,11 @@ mod tests {
             ];
             for (name, fg, bg, minimum) in checks {
                 let ratio = contrast(fg, bg);
-                assert!(ratio >= minimum, "tema {} — {name}: contraste {ratio:.2} < {minimum}", if dark { "escuro" } else { "claro" });
+                assert!(
+                    ratio >= minimum,
+                    "tema {} — {name}: contraste {ratio:.2} < {minimum}",
+                    if dark { "escuro" } else { "claro" }
+                );
             }
         }
     }
@@ -237,7 +264,10 @@ mod tests {
         let style = build_style(false);
         assert_eq!(style.visuals.panel_fill, palette(false).bg);
         assert_eq!(style.visuals.override_text_color, Some(palette(false).text));
-        assert_eq!(style.visuals.widgets.inactive.corner_radius, CornerRadius::same(8));
+        assert_eq!(
+            style.visuals.widgets.inactive.corner_radius,
+            CornerRadius::same(8)
+        );
         assert!(build_style(true).visuals.dark_mode);
     }
 

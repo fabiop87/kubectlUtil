@@ -28,11 +28,12 @@ pub(super) fn card<R>(
     card_frame(&p)
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
-            ui.label(egui::RichText::new(title).size(16.0).strong());
+            ui.label(egui::RichText::new(title).size(12.0).strong().color(p.text));
+
             if let Some(subtitle) = subtitle {
                 ui.label(egui::RichText::new(subtitle).small().color(p.muted));
             }
-            ui.add_space(6.0);
+            //ui.add_space(6.0);
             add_contents(ui)
         })
         .inner
@@ -41,7 +42,11 @@ pub(super) fn card<R>(
 /// Pílula informativa: `rótulo valor`. `set = false` esmaece o valor (ex.: "não selecionado").
 pub(super) fn chip(ui: &mut egui::Ui, label: &str, value: &str, set: bool) {
     let p = palette_of(ui);
-    let (fill, value_color) = if set { (p.accent_soft, p.accent_dark) } else { (p.surface_alt, p.muted) };
+    let (fill, value_color) = if set {
+        (p.accent_soft, p.accent_dark)
+    } else {
+        (p.surface_alt, p.muted)
+    };
     egui::Frame::new()
         .fill(fill)
         .corner_radius(egui::CornerRadius::same(12))
@@ -58,14 +63,16 @@ pub(super) fn chip(ui: &mut egui::Ui, label: &str, value: &str, set: bool) {
 /// Botão de ação principal (cor de destaque).
 pub(super) fn primary_button(ui: &mut egui::Ui, enabled: bool, text: &str) -> egui::Response {
     let p = palette_of(ui);
-    let button = egui::Button::new(egui::RichText::new(text).strong().color(p.on_accent)).fill(p.accent);
+    let button =
+        egui::Button::new(egui::RichText::new(text).strong().color(p.on_accent)).fill(p.accent);
     ui.add_enabled(enabled, button)
 }
 
 /// Botão para ações que interrompem algo (parar, cancelar).
 pub(super) fn danger_button(ui: &mut egui::Ui, text: &str) -> egui::Response {
     let p = palette_of(ui);
-    let button = egui::Button::new(egui::RichText::new(text).strong().color(p.on_danger)).fill(p.danger);
+    let button =
+        egui::Button::new(egui::RichText::new(text).strong().color(p.on_danger)).fill(p.danger);
     ui.add(button)
 }
 
@@ -75,11 +82,19 @@ pub(super) fn field_combo(ui: &mut egui::Ui, label: &str, selectable: &mut Selec
     ui.label(egui::RichText::new(label).color(muted));
 
     // Desestruturar permite emprestar cada campo separadamente dentro dos closures.
-    let Selectable { value, items, filter } = selectable;
+    let Selectable {
+        value,
+        items,
+        filter,
+    } = selectable;
 
     egui::ComboBox::from_id_salt(label)
         .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
-        .selected_text(if value.is_empty() { "Selecionar…" } else { value.as_str() })
+        .selected_text(if value.is_empty() {
+            "Selecionar…"
+        } else {
+            value.as_str()
+        })
         .width(width)
         .show_ui(ui, |ui| {
             ui.set_min_width(width);
@@ -102,7 +117,10 @@ pub(super) fn field_combo(ui: &mut egui::Ui, label: &str, selectable: &mut Selec
                     let needle = filter.trim().to_lowercase();
                     let mut found = false;
 
-                    for item in items.iter().filter(|item| item.to_lowercase().contains(&needle)) {
+                    for item in items
+                        .iter()
+                        .filter(|item| item.to_lowercase().contains(&needle))
+                    {
                         found = true;
 
                         if ui
