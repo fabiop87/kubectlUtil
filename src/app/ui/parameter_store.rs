@@ -117,7 +117,7 @@ impl KubectlUtilApp {
             ui,
             "Valor do parâmetro",
             Some(
-                "Consulta individual e sob demanda; o valor não vai ao histórico nem ao log geral.",
+                "Consulta individual sob demanda. Ao sair desta seção, o valor é removido do estado do app; isso não garante limpeza física da memória. Copiar envia o segredo à área de transferência do sistema.",
             ),
             |ui| {
                 ui.horizontal_wrapped(|ui| {
@@ -133,7 +133,7 @@ impl KubectlUtilApp {
                     }
                     if self.params.revealed_visible {
                         if ui.button("Ocultar valor").clicked() {
-                            // Além de ocultar, apaga o segredo da memória do aplicativo.
+                            // Oculta e remove o valor do estado do app.
                             self.params.hide_value();
                         }
                         if ui.button("Copiar valor").clicked() {

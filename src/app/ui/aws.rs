@@ -26,7 +26,8 @@ impl KubectlUtilApp {
                 });
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Região");
-                    ui.add(egui::TextEdit::singleline(&mut self.region).desired_width(130.0));
+                    ui.add(egui::TextEdit::singleline(&mut self.region).desired_width(130.0))
+                        .on_hover_text("Região inicial: us-east-1. Confira a região antes de consultar ou atualizar o kubeconfig.");
                     ui.label("Cluster EKS");
                     ui.add(egui::TextEdit::singleline(&mut self.cluster).desired_width(220.0));
                 });

@@ -110,7 +110,7 @@ pub struct KubectlUtilApp {
 impl KubectlUtilApp {
     pub fn new(ctx: egui::Context) -> Self {
         let (tx, rx) = mpsc::channel();
-        let mut app = Self {
+        let app = Self {
             ctx,
             section: Section::Connection,
             context: Selectable::default(),
@@ -139,7 +139,7 @@ impl KubectlUtilApp {
             tx,
             rx,
         };
-        app.refresh_contexts();
+        // app.refresh_contexts(); // comentado pois não quero que os contextos sejam listados logo ao abrir o utilitário
         app
     }
 

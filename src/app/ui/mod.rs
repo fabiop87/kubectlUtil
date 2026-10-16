@@ -30,6 +30,9 @@ impl eframe::App for KubectlUtilApp {
         while let Ok(result) = self.rx.try_recv() {
             self.handle_result(result);
         }
+        if ctx.input(|input| input.viewport().minimized == Some(true)) {
+            self.params.hide_value();
+        }
         self.poll_port_forwards();
         // Só precisa acordar periodicamente para vigiar processos de port-forward reais;
         // resultados de comandos acordam a interface sozinhos (ver `launch`).
@@ -229,6 +232,9 @@ impl KubectlUtilApp {
                 .stroke(egui::Stroke::NONE);
         }
         if ui.add(button).clicked() {
+            if self.section == Section::Parameters && section != Section::Parameters {
+                self.params.hide_value();
+            }
             self.section = section;
         }
     }
@@ -250,6 +256,9 @@ impl KubectlUtilApp {
             chip(ui, "Contexto", &context, context_set);
             chip(ui, "Namespace", &namespace, namespace_set);
             if ui.button("Abrir conexão").clicked() {
+                if self.section == Section::Parameters {
+                    self.params.hide_value();
+                }
                 self.section = Section::Connection;
             }
         });

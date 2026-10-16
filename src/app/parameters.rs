@@ -51,7 +51,7 @@ impl ParameterStore {
         self.hide_value();
     }
 
-    /// Oculta e apaga o valor da memória do aplicativo.
+    /// Oculta e remove o valor do estado; Rust não garante zerar a memória alocada.
     pub fn hide_value(&mut self) {
         self.revealed.clear();
         self.revealed_visible = false;
