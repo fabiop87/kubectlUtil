@@ -94,6 +94,8 @@ pub struct KubectlUtilApp {
     cancel: Arc<AtomicBool>,
     mock_mode: bool,
     mock_scenario: MockScenario,
+    /// Tema escuro ligado (o tema inicial é o claro).
+    dark_mode: bool,
     explorer_output: String,
     explorer_namespace: String,
     history: Vec<String>,
@@ -126,6 +128,7 @@ impl KubectlUtilApp {
             cancel: Arc::new(AtomicBool::new(false)),
             mock_mode: false,
             mock_scenario: MockScenario::Success,
+            dark_mode: false,
             explorer_output: String::new(),
             explorer_namespace: String::new(),
             history: Vec::new(),
