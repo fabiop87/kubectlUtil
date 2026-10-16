@@ -5,15 +5,9 @@
 //! (escrito para egui 0.31+). Se uma atualização do egui renomear algo, é aqui
 //! que se corrige; o resto do aplicativo só usa `Palette`.
 //!
-//! Fontes: não há nenhuma embutida (nenhuma dependência nova). Em tempo de
-//! execução o app procura, nesta ordem, `fonts/ui.ttf` (ao lado do executável),
-//! `assets/fonts/ui.ttf` (diretório atual) e fontes do sistema (Segoe UI no
-//! Windows). Para o texto monoespaçado, o mesmo com `mono.ttf` e Cascadia Mono /
-//! Consolas. Se nada for encontrado, mantém as fontes padrão do egui.
+//! Usa as fontes padrão do egui, sem procurar arquivos externos ou fontes do sistema.
 
 use eframe::egui::{self, Color32, CornerRadius, FontFamily, FontId, Margin, Stroke, TextStyle};
-use std::path::PathBuf;
-use std::sync::Arc;
 
 /// Cores usadas pelo aplicativo nos dois temas.
 #[derive(Clone, Copy, Debug)]
@@ -87,7 +81,6 @@ pub fn palette(dark: bool) -> Palette {
 
 /// Instala fontes e os dois estilos (claro e escuro); inicia no tema claro.
 pub fn install(ctx: &egui::Context) {
-    install_fonts(ctx);
     ctx.set_style_of(egui::Theme::Light, build_style(false));
     ctx.set_style_of(egui::Theme::Dark, build_style(true));
     set_dark(ctx, false);
@@ -106,18 +99,18 @@ fn build_style(dark: bool) -> egui::Style {
 
     // Tipografia
     let proportional = |size: f32| FontId::new(size, FontFamily::Proportional);
-    style.text_styles.insert(TextStyle::Heading, proportional(22.0));
-    style.text_styles.insert(TextStyle::Body, proportional(14.5));
-    style.text_styles.insert(TextStyle::Button, proportional(14.5));
-    style.text_styles.insert(TextStyle::Small, proportional(12.0));
-    style.text_styles.insert(TextStyle::Monospace, FontId::new(13.5, FontFamily::Monospace));
+    style.text_styles.insert(TextStyle::Heading, proportional(20.0));
+    style.text_styles.insert(TextStyle::Body, proportional(14.0));
+    style.text_styles.insert(TextStyle::Button, proportional(14.0));
+    style.text_styles.insert(TextStyle::Small, proportional(11.5));
+    style.text_styles.insert(TextStyle::Monospace, FontId::new(13.0, FontFamily::Monospace));
 
-    // Espaçamento mais arejado
-    style.spacing.item_spacing = egui::vec2(8.0, 8.0);
-    style.spacing.button_padding = egui::vec2(12.0, 6.0);
-    style.spacing.interact_size.y = 30.0;
-    style.spacing.window_margin = Margin::same(14);
-    style.spacing.menu_margin = Margin::same(8);
+    // Espaçamento compacto, sem deixar os controles apertados.
+    style.spacing.item_spacing = egui::vec2(6.0, 5.0);
+    style.spacing.button_padding = egui::vec2(8.0, 4.0);
+    style.spacing.interact_size.y = 28.0;
+    style.spacing.window_margin = Margin::same(10);
+    style.spacing.menu_margin = Margin::same(6);
 
     // Cores e cantos
     let v = &mut style.visuals;
@@ -127,9 +120,14 @@ fn build_style(dark: bool) -> egui::Style {
     v.faint_bg_color = p.surface_alt;
     v.code_bg_color = p.surface_alt;
     v.hyperlink_color = p.accent;
+    // Define explicitamente a cor padrão do texto. Sem isso, alguns widgets
+    // e rótulos podem herdar cores padrão do egui com contraste inadequado.
+    v.override_text_color = Some(p.text);
+    // Mantém o estilo padrão do cursor de texto do egui; `text_cursor`
+    // é um `TextCursorStyle`, não um `Stroke`.
     v.window_corner_radius = CornerRadius::same(14);
     v.menu_corner_radius = CornerRadius::same(10);
-    v.window_stroke = Stroke::new(1.0, p.border);
+    v.window_stroke = Stroke::new(1.0_f32, p.border);
     let shadow = egui::Shadow {
         offset: [0, 6],
         blur: 18,
@@ -141,120 +139,51 @@ fn build_style(dark: bool) -> egui::Style {
 
     // Texto selecionado e itens marcados (aba ativa, opção escolhida no combo)
     v.selection.bg_fill = p.accent_soft;
-    v.selection.stroke = Stroke::new(1.0, p.accent_dark);
+    v.selection.stroke = Stroke::new(1.0_f32, p.accent_dark);
 
     let radius = CornerRadius::same(8);
     let w = &mut v.widgets;
 
     w.noninteractive.bg_fill = p.surface;
     w.noninteractive.weak_bg_fill = p.surface;
-    w.noninteractive.bg_stroke = Stroke::new(1.0, p.border);
-    w.noninteractive.fg_stroke = Stroke::new(1.0, p.text);
+    w.noninteractive.bg_stroke = Stroke::new(1.0_f32, p.border);
+    w.noninteractive.fg_stroke = Stroke::new(1.0_f32, p.text);
     w.noninteractive.corner_radius = CornerRadius::same(10);
 
     w.inactive.bg_fill = p.surface_alt;
     w.inactive.weak_bg_fill = p.surface;
-    w.inactive.bg_stroke = Stroke::new(1.0, p.border);
-    w.inactive.fg_stroke = Stroke::new(1.0, p.text);
+    w.inactive.bg_stroke = Stroke::new(1.0_f32, p.border);
+    w.inactive.fg_stroke = Stroke::new(1.0_f32, p.text);
     w.inactive.corner_radius = radius;
 
     w.hovered.bg_fill = p.accent_soft;
     w.hovered.weak_bg_fill = p.accent_soft;
-    w.hovered.bg_stroke = Stroke::new(1.0, p.accent);
-    w.hovered.fg_stroke = Stroke::new(1.5, p.accent_dark);
+    w.hovered.bg_stroke = Stroke::new(1.0_f32, p.accent);
+    w.hovered.fg_stroke = Stroke::new(1.5_f32, p.accent_dark);
     w.hovered.corner_radius = radius;
     w.hovered.expansion = 0.5;
 
     w.active.bg_fill = p.accent;
     w.active.weak_bg_fill = p.accent;
-    w.active.bg_stroke = Stroke::new(1.0, p.accent);
-    w.active.fg_stroke = Stroke::new(1.5, p.on_accent);
+    w.active.bg_stroke = Stroke::new(1.0_f32, p.accent);
+    w.active.fg_stroke = Stroke::new(1.5_f32, p.on_accent);
     w.active.corner_radius = radius;
 
     w.open.bg_fill = p.accent_soft;
     w.open.weak_bg_fill = p.accent_soft;
-    w.open.bg_stroke = Stroke::new(1.0, p.accent);
-    w.open.fg_stroke = Stroke::new(1.0, p.accent_dark);
+    w.open.bg_stroke = Stroke::new(1.0_f32, p.accent);
+    w.open.fg_stroke = Stroke::new(1.0_f32, p.accent_dark);
     w.open.corner_radius = radius;
 
+    // Mantém o texto consistente em controles que não seguem exatamente
+    // a cor global, incluindo estados de interação.
+    w.noninteractive.fg_stroke = Stroke::new(1.0_f32, p.text);
+    w.inactive.fg_stroke = Stroke::new(1.0_f32, p.text);
+    w.hovered.fg_stroke = Stroke::new(1.5_f32, p.accent_dark);
+    w.active.fg_stroke = Stroke::new(1.5_f32, p.on_accent);
+    w.open.fg_stroke = Stroke::new(1.0_f32, p.accent_dark);
+
     style
-}
-
-// ----------------------------------------------------------------------
-// Fontes
-// ----------------------------------------------------------------------
-
-fn install_fonts(ctx: &egui::Context) {
-    let mut fonts = egui::FontDefinitions::default();
-    let mut changed = false;
-
-    if let Some(bytes) = first_readable(&ui_font_candidates()) {
-        add_font(&mut fonts, "kubectlutil-ui", bytes, FontFamily::Proportional);
-        changed = true;
-    }
-    if let Some(bytes) = first_readable(&mono_font_candidates()) {
-        add_font(&mut fonts, "kubectlutil-mono", bytes, FontFamily::Monospace);
-        changed = true;
-    }
-
-    if changed {
-        ctx.set_fonts(fonts);
-    }
-}
-
-/// A fonte nova vai para a frente da família; as fontes padrão do egui continuam
-/// atrás e cobrem os símbolos que ela não tiver (setas, ◈, ●, emojis).
-fn add_font(fonts: &mut egui::FontDefinitions, name: &str, bytes: Vec<u8>, family: FontFamily) {
-    fonts.font_data.insert(name.to_owned(), Arc::new(egui::FontData::from_owned(bytes)));
-    fonts.families.entry(family).or_default().insert(0, name.to_owned());
-}
-
-fn first_readable(paths: &[PathBuf]) -> Option<Vec<u8>> {
-    paths.iter().find_map(|path| std::fs::read(path).ok())
-}
-
-/// `fonts/<file>` ao lado do executável e `assets/fonts/<file>` no diretório atual.
-fn custom_font_paths(file: &str) -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    if let Some(dir) = std::env::current_exe().ok().and_then(|exe| exe.parent().map(|p| p.to_path_buf())) {
-        paths.push(dir.join("fonts").join(file));
-    }
-    paths.push(PathBuf::from("assets").join("fonts").join(file));
-    paths
-}
-
-fn windows_font(file: &str) -> Option<PathBuf> {
-    std::env::var_os("WINDIR").map(|dir| PathBuf::from(dir).join("Fonts").join(file))
-}
-
-fn ui_font_candidates() -> Vec<PathBuf> {
-    let mut paths = custom_font_paths("ui.ttf");
-    paths.extend(windows_font("segoeui.ttf"));
-    paths.extend(
-        [
-            "/usr/share/fonts/truetype/inter/Inter-Regular.ttf",
-            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-            "/usr/share/fonts/noto/NotoSans-Regular.ttf",
-            "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
-        ]
-        .map(PathBuf::from),
-    );
-    paths
-}
-
-fn mono_font_candidates() -> Vec<PathBuf> {
-    let mut paths = custom_font_paths("mono.ttf");
-    paths.extend(windows_font("CascadiaMono.ttf"));
-    paths.extend(windows_font("consola.ttf"));
-    paths.extend(
-        [
-            "/usr/share/fonts/truetype/jetbrains-mono/JetBrainsMono-Regular.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-            "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
-        ]
-        .map(PathBuf::from),
-    );
-    paths
 }
 
 #[cfg(test)]
@@ -307,14 +236,16 @@ mod tests {
     fn style_uses_palette_and_rounded_widgets() {
         let style = build_style(false);
         assert_eq!(style.visuals.panel_fill, palette(false).bg);
+        assert_eq!(style.visuals.override_text_color, Some(palette(false).text));
         assert_eq!(style.visuals.widgets.inactive.corner_radius, CornerRadius::same(8));
         assert!(build_style(true).visuals.dark_mode);
     }
 
     #[test]
-    fn font_candidates_include_custom_paths_first() {
-        let paths = ui_font_candidates();
-        assert!(paths.iter().any(|p| p.ends_with("fonts/ui.ttf") || p.ends_with("fonts\\ui.ttf")));
-        assert!(first_readable(&[PathBuf::from("/caminho/que/nao/existe.ttf")]).is_none());
+    fn style_spacing_is_compact() {
+        let style = build_style(false);
+        assert_eq!(style.spacing.item_spacing, egui::vec2(6.0, 5.0));
+        assert_eq!(style.spacing.button_padding, egui::vec2(8.0, 4.0));
+        assert_eq!(style.spacing.window_margin, Margin::same(10));
     }
 }

@@ -176,7 +176,7 @@ impl KubectlUtilApp {
         let p = palette_of(ui);
         egui::Frame::new()
             .fill(p.success_soft)
-            .stroke(egui::Stroke::new(1.0, p.success))
+            .stroke(egui::Stroke::new(1.0_f32, p.success))
             .corner_radius(egui::CornerRadius::same(10))
             .inner_margin(egui::Margin::same(12))
             .show(ui, |ui| {

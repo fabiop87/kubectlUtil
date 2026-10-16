@@ -12,7 +12,7 @@ pub(super) fn palette_of(ui: &egui::Ui) -> Palette {
 pub(super) fn card_frame(p: &Palette) -> egui::Frame {
     egui::Frame::new()
         .fill(p.surface)
-        .stroke(egui::Stroke::new(1.0, p.border))
+        .stroke(egui::Stroke::new(1.0_f32, p.border))
         .corner_radius(egui::CornerRadius::same(12))
         .inner_margin(egui::Margin::same(16))
 }
