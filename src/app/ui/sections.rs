@@ -1,51 +1,28 @@
-//! Abas baseadas em presets: Visão geral, Cluster e Rede/storage.
-//! Para incluir um botão, edite `presets.rs`; nada muda aqui.
+use super::*;
+use crate::app::presets::Preset;
 
-use super::widgets::card;
-use crate::app::KubectlUtilApp;
-use crate::app::presets::{self, Preset};
-use eframe::egui;
-
-impl KubectlUtilApp {
-    pub(super) fn show_overview(&mut self, ui: &mut egui::Ui) {
+impl AppView {
+    pub(super) fn presets(
+        &self,
+        title: &'static str,
+        list: &'static [Preset],
+        cx: &Context<Self>,
+    ) -> Div {
         card(
-            ui,
-            "Acesso rápido",
-            Some("As consultas mais usadas, uma por clique."),
-            |ui| {
-                ui.horizontal_wrapped(|ui| self.preset_buttons(ui, presets::OVERVIEW));
-            },
-        );
+            title,
+            "Execute uma consulta para visualizar o resultado no console.",
+        )
+        .child(self.preset_buttons(list, cx))
     }
-
-    pub(super) fn show_cluster(&mut self, ui: &mut egui::Ui) {
-        card(
-            ui,
-            "Consultas do cluster",
-            Some("Nodes, workloads, eventos, Services e imagens."),
-            |ui| {
-                ui.horizontal_wrapped(|ui| self.preset_buttons(ui, presets::CLUSTER));
-            },
-        );
-    }
-
-    pub(super) fn show_network(&mut self, ui: &mut egui::Ui) {
-        card(
-            ui,
-            "Rede, storage e backups",
-            Some("Ingress, endpoints, volumes, ConfigMaps e Velero."),
-            |ui| {
-                ui.horizontal_wrapped(|ui| self.preset_buttons(ui, presets::NETWORK));
-            },
-        );
-    }
-
-    /// Um botão por preset; valida as seleções necessárias antes de executar.
-    pub(super) fn preset_buttons(&mut self, ui: &mut egui::Ui, list: &[Preset]) {
-        for preset in list {
-            if ui.button(preset.label).clicked() {
-                self.run_preset(preset);
-            }
-        }
+    pub(super) fn preset_buttons(&self, list: &'static [Preset], cx: &Context<Self>) -> Div {
+        row().children(list.iter().enumerate().map(|(i, preset)| {
+            Button::new(("preset", i))
+                .label(preset.label)
+                .disabled(self.model.busy)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.model.run_preset(preset);
+                    cx.notify();
+                }))
+        }))
     }
 }

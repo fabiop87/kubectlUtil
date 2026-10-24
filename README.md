@@ -1,6 +1,17 @@
 # kubectlUtil
 
-Aplicativo desktop em Rust + `eframe/egui` para consultas sob demanda a Kubernetes, kubectl e AWS CLI.
+Aplicativo desktop em Rust + `gpui-kit` 0.8.0 para consultas sob demanda a Kubernetes, kubectl e AWS CLI.
+
+## Interface
+
+Tema escuro inspirado em liquid glass, com superfícies translúcidas, reflexos em degradê,
+bordas suaves e navegação lateral. Os componentes nativos de entrada, seleção pesquisável,
+botões e console usam [GPUI Kit 0.8.0](https://gpui-kit.com/docs/getting-started/).
+O acabamento é desenhado pelo app; não depende de blur ou refração do compositor do sistema.
+
+A área de trabalho tem rolagem independente do console. O modo Mock permite explorar
+os fluxos e simular sucesso, erro, timeout, lista vazia e falta de permissões sem rede.
+Valores do Parameter Store são ocultados ao trocar de seção ou desativar a janela.
 
 ## Organização do código
 
@@ -21,7 +32,7 @@ src/
     ├── util.rs        # Validação de porta e data/hora UTC
     └── ui/
         ├── mod.rs             # Laço principal, navegação, painel de saída, histórico
-        ├── widgets.rs         # field_combo (combo pesquisável)
+        ├── widgets.rs         # Inputs e Selects pesquisáveis do GPUI Kit
         ├── connection.rs      # Aba Conexão: seleção, explorador, troubleshooting, port-forward
         ├── sections.rs        # Visão geral, Cluster, Rede/storage (a partir dos presets)
         ├── aws.rs             # Aba AWS & EKS

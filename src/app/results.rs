@@ -58,7 +58,7 @@ impl KubectlUtilApp {
     /// Valores de parâmetros nunca vão ao painel geral nem ao histórico.
     fn handle_secret_result(&mut self, result: CommandResult) {
         let ok = result.success;
-        if ok {
+        if ok && self.section == super::Section::Parameters {
             self.params.set_revealed(result.output.clone());
         } else {
             self.params.hide_value();

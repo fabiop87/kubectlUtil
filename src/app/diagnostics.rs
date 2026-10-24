@@ -70,7 +70,7 @@ fn row_is_healthy(line: &str, columns: &Columns) -> bool {
     let ready = columns.ready.and_then(|index| cells.get(index).copied());
     match *status {
         "Completed" | "Succeeded" => true,
-        "Running" => ready.map_or(true, ready_is_complete),
+        "Running" => ready.is_none_or(ready_is_complete),
         _ => false,
     }
 }

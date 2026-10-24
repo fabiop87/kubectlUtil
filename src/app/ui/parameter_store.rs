@@ -1,164 +1,111 @@
-//! Aba "Parameter Store" (somente leitura).
+use super::*;
 
-use super::widgets::{card, palette_of, primary_button};
-use crate::app::KubectlUtilApp;
-use eframe::egui;
-
-impl KubectlUtilApp {
-    pub(super) fn show_parameters(&mut self, ui: &mut egui::Ui) {
-        self.show_parameter_list(ui);
-        //ui.add_space(8.0);
-        self.show_parameter_value(ui);
-
-        let muted = palette_of(ui).muted;
-        //ui.add_space(8.0);
-        ui.label(
-            egui::RichText::new(
-                "Os resultados ficam em cache em memória por perfil, região e caminho até atualizar, trocar a consulta ou fechar o aplicativo. SecureString só é descriptografado quando você solicita o valor.",
-            )
-            .small()
-            .color(muted),
-        );
-    }
-
-    fn show_parameter_list(&mut self, ui: &mut egui::Ui) {
-        let muted = palette_of(ui).muted;
-        card(
-            ui,
-            "AWS Systems Manager — Parameter Store",
-            Some("Somente leitura. O aplicativo não cria, altera nem exclui parâmetros."),
-            |ui| {
-                ui.label(
-                    egui::RichText::new(format!(
-                        "Perfil: {}    Região: {}",
-                        self.profile.value, self.region
-                    ))
-                    .color(muted),
-                );
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Caminho");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.params.path)
-                            .desired_width(300.0)
-                            .hint_text("/producao/minha-aplicacao/"),
-                    );
-                    if primary_button(ui, !self.busy, "Carregar (usar cache)").clicked() {
-                        self.load_parameters(false);
-                    }
-                    if ui
-                        .add_enabled(!self.busy, egui::Button::new("Atualizar da AWS"))
-                        .clicked()
-                    {
-                        self.load_parameters(true);
-                    }
-                    if ui
-                        .add_enabled(!self.busy, egui::Button::new("Limpar cache"))
-                        .clicked()
-                    {
-                        self.clear_parameter_cache();
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Filtrar nomes");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.params.filter)
-                            .desired_width(280.0)
-                            .hint_text("Digite parte do nome"),
-                    );
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "{} parâmetros em memória",
-                            self.params.entries.len()
-                        ))
-                        .color(muted),
-                    );
-                });
-
-                egui::ScrollArea::vertical()
-                    .id_salt("parameter_store_scroll_area")
-                    .max_height(220.0)
-                    .show(ui, |ui| {
-                        egui::Grid::new("ssm_parameters_grid")
-                            .striped(true)
-                            .spacing([18.0, 6.0])
-                            .show(ui, |ui| {
-                                ui.strong("Nome");
-                                ui.strong("Tipo");
-                                ui.strong("Última modificação");
-                                ui.end_row();
-                                let filter = self.params.filter.to_lowercase();
-                                let visible: Vec<_> = self
-                                    .params
-                                    .entries
-                                    .iter()
-                                    .filter(|p| p.name.to_lowercase().contains(&filter))
-                                    .cloned()
-                                    .collect();
-                                for p in visible {
-                                    if ui
-                                        .selectable_label(self.params.selected == p.name, &p.name)
-                                        .clicked()
-                                    {
-                                        self.params.select(p.name.clone());
-                                    }
-                                    ui.label(&p.kind);
-                                    ui.label(&p.modified);
-                                    ui.end_row();
-                                }
-                            });
-                    });
+impl AppView {
+    pub(super) fn parameters(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let mut list = card(
+            "AWS Systems Manager · Parameter Store",
+            "Somente leitura. SecureString só é descriptografado quando você consulta o valor.",
+        )
+        .child(note(format!(
+            "Perfil: {} · Região: {}",
+            self.model.profile.value, self.model.region
+        )))
+        .child(self.field(
+            "parameter-path",
+            "Caminho",
+            |m| &m.params.path,
+            |m, v| {
+                m.params.path = v;
+                m.params.hide_value();
             },
-        );
-    }
-
-    fn show_parameter_value(&mut self, ui: &mut egui::Ui) {
-        let muted = palette_of(ui).muted;
-        card(
-            ui,
-            "Valor do parâmetro",
-            Some(
-                "Consulta individual sob demanda. Ao sair desta seção, o valor é removido do estado do app; isso não garante limpeza física da memória. Copiar envia o segredo à área de transferência do sistema.",
-            ),
-            |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    let selected = if self.params.selected.is_empty() {
-                        "Nenhum parâmetro selecionado".to_string()
-                    } else {
-                        self.params.selected.clone()
-                    };
-                    ui.label(egui::RichText::new(selected).strong());
-                    let can_reveal = !self.busy && !self.params.selected.is_empty();
-                    if primary_button(ui, can_reveal, "Consultar valor").clicked() {
-                        self.reveal_selected_parameter();
-                    }
-                    if self.params.revealed_visible {
-                        if ui.button("Ocultar valor").clicked() {
-                            // Oculta e remove o valor do estado do app.
-                            self.params.hide_value();
-                        }
-                        if ui.button("Copiar valor").clicked() {
-                            ui.ctx().copy_text(self.params.revealed.clone());
-                            self.status = "Valor copiado para a área de transferência; limpe-a se necessário.".into();
-                        }
-                    }
-                });
-
-                if self.params.revealed_visible {
-                    // `&str` é somente leitura, mas continua selecionável.
-                    let mut value: &str = self.params.revealed.as_str();
-                    ui.add(
-                        egui::TextEdit::multiline(&mut value)
-                            .font(egui::TextStyle::Monospace)
-                            .desired_width(f32::INFINITY)
-                            .desired_rows(3),
-                    );
-                } else if !self.params.selected.is_empty() {
-                    ui.label(
-                        egui::RichText::new("Valor oculto. Clique em ‘Consultar valor’ para fazer uma consulta AWS individual.")
-                            .color(muted),
-                    );
-                }
-            },
-        );
+            window,
+            cx,
+        ))
+        .child(
+            row()
+                .child(
+                    self.button("load-params", "Carregar (usar cache)", cx, |m| {
+                        m.load_parameters(false)
+                    })
+                    .primary(),
+                )
+                .child(self.button("refresh-params", "Atualizar da AWS", cx, |m| {
+                    m.load_parameters(true)
+                }))
+                .child(self.button("clear-cache", "Limpar cache", cx, |m| {
+                    m.clear_parameter_cache()
+                })),
+        )
+        .child(self.field(
+            "parameter-filter",
+            "Filtrar nomes",
+            |m| &m.params.filter,
+            |m, v| m.params.filter = v,
+            window,
+            cx,
+        ))
+        .child(note(format!(
+            "{} parâmetros em memória",
+            self.model.params.entries.len()
+        )));
+        let needle = self.model.params.filter.to_lowercase();
+        let mut entries = div()
+            .id("parameter-list")
+            .max_h(px(220.))
+            .overflow_y_scroll()
+            .flex()
+            .flex_col()
+            .gap_2();
+        for (i, entry) in self
+            .model
+            .params
+            .entries
+            .iter()
+            .filter(|p| p.name.to_lowercase().contains(&needle))
+            .enumerate()
+        {
+            let name = entry.name.clone();
+            entries = entries.child(
+                row()
+                    .child(
+                        Button::new(("parameter", i))
+                            .label(entry.name.clone())
+                            .selected(self.model.params.selected == entry.name)
+                            .disabled(self.model.busy)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.model.params.select(name.clone());
+                                cx.notify();
+                            })),
+                    )
+                    .child(note(format!("{} · {}", entry.kind, entry.modified))),
+            );
+        }
+        list = list.child(entries);
+        let selected = if self.model.params.selected.is_empty() {
+            "Nenhum parâmetro selecionado".to_string()
+        } else {
+            self.model.params.selected.clone()
+        };
+        let mut value=card("Valor do parâmetro", "Ao sair desta seção ou desativar a janela, o valor é ocultado. Copiar envia o segredo à área de transferência do sistema.")
+            .child(div().child(selected))
+            .child(self.button("reveal", "Consultar valor", cx, |m| m.reveal_selected_parameter())
+                .disabled(self.model.busy || self.model.params.selected.is_empty()).primary());
+        if self.model.params.revealed_visible {
+            value=value.child(row()
+                .child(Button::new("hide-value").label("Ocultar valor").on_click(cx.listener(|this, _, _, cx| {
+                    this.model.params.hide_value(); cx.notify();
+                })))
+                .child(Button::new("copy-value").label("Copiar valor").on_click(cx.listener(|this, _, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(this.model.params.revealed.clone()));
+                    this.model.status="Valor copiado para a área de transferência; limpe-a se necessário.".into(); cx.notify();
+                }))))
+                .child(div().id("revealed-value").max_h(px(160.)).overflow_scroll().p_3().rounded(px(10.))
+                    .bg(rgb(0x130C1F)).font_family("Consolas").child(self.model.params.revealed.clone()));
+        } else {
+            value = value.child(note(
+                "Valor oculto. A consulta individual depende de uma ação explícita.",
+            ));
+        }
+        blocks([list, value])
     }
 }

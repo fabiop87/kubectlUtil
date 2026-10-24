@@ -3,7 +3,6 @@
 
 use crate::action::Action;
 use crate::command::{self, CommandResult};
-use eframe::egui;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -18,6 +17,7 @@ mod results;
 mod runner;
 mod ui;
 mod util;
+pub use ui::AppView;
 
 use self::diagnostics::diagnose_pods;
 use self::mock::MockScenario;
@@ -54,12 +54,11 @@ impl Section {
     }
 }
 
-/// Valor escolhido + opções disponíveis + texto do filtro de um combo pesquisável.
+/// Valor escolhido e opções disponíveis; o filtro pertence ao Select do Kit.
 #[derive(Default)]
 struct Selectable {
     value: String,
     items: Vec<String>,
-    filter: String,
 }
 
 impl Selectable {
@@ -76,7 +75,6 @@ impl Selectable {
 }
 
 pub struct KubectlUtilApp {
-    ctx: egui::Context,
     section: Section,
     context: Selectable,
     namespace: Selectable,
@@ -97,8 +95,6 @@ pub struct KubectlUtilApp {
     cancel: Arc<AtomicBool>,
     mock_mode: bool,
     mock_scenario: MockScenario,
-    /// Tema escuro ligado (o tema inicial é o claro).
-    dark_mode: bool,
     explorer_output: String,
     explorer_namespace: String,
     history: Vec<String>,
@@ -108,10 +104,24 @@ pub struct KubectlUtilApp {
 }
 
 impl KubectlUtilApp {
-    pub fn new(ctx: egui::Context) -> Self {
+    fn navigate(&mut self, section: Section) {
+        if self.section == Section::Parameters && section != Section::Parameters {
+            self.params.hide_value();
+        }
+        self.section = section;
+    }
+
+    fn save_output_log(&mut self) {
+        let file_name = format!("kubectlUtil-output-{}.log", util::file_stamp());
+        self.status = match std::fs::write(&file_name, &self.output) {
+            Ok(()) => format!("Saída salva em {file_name}"),
+            Err(e) => format!("Não foi possível salvar o log: {e}"),
+        };
+    }
+
+    pub fn new() -> Self {
         let (tx, rx) = mpsc::channel();
         let app = Self {
-            ctx,
             section: Section::Connection,
             context: Selectable::default(),
             namespace: Selectable::default(),
@@ -131,7 +141,6 @@ impl KubectlUtilApp {
             cancel: Arc::new(AtomicBool::new(false)),
             mock_mode: false,
             mock_scenario: MockScenario::Success,
-            dark_mode: false,
             explorer_output: String::new(),
             explorer_namespace: String::new(),
             history: Vec::new(),
@@ -175,13 +184,10 @@ impl KubectlUtilApp {
         self.cancel = Arc::clone(&cancel);
         let runner = self.runner();
         let tx = self.tx.clone();
-        let ctx = self.ctx.clone();
         let program = program.to_string();
         thread::spawn(move || {
             let result = runner.run(action, &program, &args, &cancel);
             let _ = tx.send(result);
-            // Acorda a interface assim que o resultado estiver pronto.
-            ctx.request_repaint();
         });
     }
 
@@ -557,15 +563,13 @@ impl KubectlUtilApp {
             return;
         }
         let key = parameters::cache_key(&profile, &region, &path);
-        if !force_refresh {
-            if let Some(cached) = self.params.cache.get(&key).cloned() {
-                self.params.show(key, cached);
-                self.status = format!(
-                    "{} parâmetros carregados do cache local; nenhuma chamada à AWS.",
-                    self.params.entries.len()
-                );
-                return;
-            }
+        if !force_refresh && let Some(cached) = self.params.cache.get(&key).cloned() {
+            self.params.show(key, cached);
+            self.status = format!(
+                "{} parâmetros carregados do cache local; nenhuma chamada à AWS.",
+                self.params.entries.len()
+            );
+            return;
         }
         // Listagem somente de metadados: `describe-parameters` não retorna valores.
         self.params.pending_key = key;
@@ -607,5 +611,44 @@ impl KubectlUtilApp {
         };
         self.params.hide_value();
         self.aws(action, args);
+    }
+}
+
+#[cfg(test)]
+mod ui_state_tests {
+    use super::*;
+
+    #[test]
+    fn leaving_parameters_discards_secret() {
+        let mut app = KubectlUtilApp::new();
+        app.section = Section::Parameters;
+        app.params.set_revealed("secret".into());
+        app.navigate(Section::Connection);
+        assert!(app.params.revealed.is_empty());
+        assert!(!app.params.revealed_visible);
+    }
+
+    #[test]
+    fn late_secret_result_does_not_reveal_after_navigation() {
+        let mut app = KubectlUtilApp::new();
+        app.handle_result(CommandResult {
+            action: Action::SsmRevealSecure,
+            output: "secret".into(),
+            success: true,
+        });
+        assert!(!app.params.revealed_visible);
+        assert!(app.params.revealed.is_empty());
+        assert!(!app.output.contains("secret"));
+        assert!(!app.history.join("\n").contains("secret"));
+    }
+
+    #[test]
+    fn mock_connection_still_uses_selected_context() {
+        let mut app = KubectlUtilApp::new();
+        app.mock_mode = true;
+        app.context.value = "mock-context".into();
+        let args = app.kubectl_args(command::args(&["get", "pods"]));
+        assert_eq!(&args[..2], &["--context", "mock-context"]);
+        assert!(args.contains(&"--request-timeout=30s".into()));
     }
 }
