@@ -15,6 +15,7 @@ mod port_forward;
 mod presets;
 mod results;
 mod runner;
+mod service;
 mod ui;
 mod util;
 pub use ui::AppView;
@@ -80,6 +81,7 @@ pub struct KubectlUtilApp {
     namespace: Selectable,
     pod: Selectable,
     service: Selectable,
+    service_target: String,
     profile: Selectable,
     region: String,
     cluster: String,
@@ -127,6 +129,7 @@ impl KubectlUtilApp {
             namespace: Selectable::default(),
             pod: Selectable::default(),
             service: Selectable::default(),
+            service_target: String::new(),
             profile: Selectable::with_value("default"),
             region: "us-east-1".into(),
             cluster: String::new(),

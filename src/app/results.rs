@@ -83,6 +83,15 @@ impl KubectlUtilApp {
     /// painel de saída e não vira item de combo.
     fn apply_success(&mut self, result: &CommandResult) {
         match result.action {
+            Action::ServiceOverview => {
+                match super::service::report(&result.output, &self.service_target) {
+                    Ok(report) => self.output = report,
+                    Err(error) => {
+                        self.output = error;
+                        self.status = "Não foi possível gerar a visão por serviço.".into();
+                    }
+                }
+            }
             Action::Contexts => {
                 self.context.items = non_empty_lines(&result.output);
                 if self.context.value.trim().is_empty() {

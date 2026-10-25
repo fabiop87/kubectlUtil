@@ -94,6 +94,35 @@ O executável fica em `target\release\kubectlUtil.exe`.
 - Histórico local de operações, com limite de 200 entradas e data/hora em UTC.
 - A saída pode ser salva em `kubectlUtil-output-AAAAMMDDHHMMSS.log` (diretório atual); o texto do painel de saída é selecionável.
 
+## Visão por serviço e diagnóstico integrado
+
+Na aba Kubernetes, selecione contexto e namespace, carregue os Services e escolha um.
+Clique em **Consultar serviço e diagnóstico**. O painel de saída reúne portas do Service,
+Pods associados pelo selector, workloads (incluindo os sem Pods), Ingresses e os últimos
+20 eventos relacionados disponíveis. Mostra réplicas prontas, reinícios, estados dos containers,
+OOMKilled, falhas de imagem e configuração de probes. Os vínculos de ownership usam UIDs.
+Services sem selector são sinalizados, sem tentar adivinhar os Pods associados.
+
+A consulta usa apenas `kubectl get`, com contexto explícito, timeout e cancelamento existentes.
+É necessário acesso de leitura a Services, Pods, Deployments, ReplicaSets, StatefulSets,
+DaemonSets, Ingresses e Events do namespace; uma falha de permissão interrompe a consulta
+e aparece na saída. Não executa comandos nos containers nem consulta valores do Parameter Store.
+O diagnóstico representa o instante da consulta; não testa conectividade e eventos podem expirar.
+O modo Mock inclui um exemplo com CrashLoopBackOff, OOMKilled e falha de readiness.
+
+Opcionalmente, crie `service-paths.json` no diretório de execução do aplicativo:
+
+```json
+{
+  "dev-cluster/dev/api-service": "/dev/api",
+  "prod-cluster/production/api-service": "/production/api"
+}
+```
+
+**Abrir caminho no Parameter Store** lê esse arquivo e abre a aba com o caminho configurado.
+Confira perfil e região antes de carregar os metadados. Arquivo ausente, inválido ou sem
+mapeamento resulta em um aviso. O arquivo é relido a cada clique; não exige reiniciar o app.
+
 ## Port Forward: uso
 
 1. Na aba **Kubernetes**, selecione contexto e namespace; carregue a lista de Pods e/ou Services e escolha o recurso.

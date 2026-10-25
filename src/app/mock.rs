@@ -107,6 +107,7 @@ fn sleep_unless_cancelled(total: Duration, cancel: &AtomicBool) -> bool {
 
 fn empty_output(action: Action) -> String {
     match action {
+        Action::ServiceOverview => r#"{"items":[]}"#.into(),
         Action::SsmList => r#"{"Parameters":[]}"#.into(),
         Action::AwsIdentity => "{}".into(),
         Action::EksClusters => r#"{"clusters":[]}"#.into(),
@@ -123,6 +124,7 @@ fn generic_output(action: Action, program: &str, joined: &str) -> String {
 
 fn success_output(action: Action, program: &str, joined: &str) -> String {
     match action {
+        Action::ServiceOverview => super::service::mock_snapshot(),
         Action::Contexts => "dev-cluster\nstaging-cluster\nprod-cluster".into(),
         Action::CurrentContext => "dev-cluster".into(),
         Action::UseContext | Action::UpdateKubeconfig => format!(

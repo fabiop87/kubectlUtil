@@ -15,6 +15,7 @@ pub enum Action {
     Namespaces,
     PodNames,
     ServiceNames,
+    ServiceOverview,
     // Kubernetes: consultas
     PodExplorer,
     PodDiagnostics,
@@ -59,6 +60,7 @@ impl Action {
             Self::Namespaces => "Namespaces",
             Self::PodNames => "Pods",
             Self::ServiceNames => "Services",
+            Self::ServiceOverview => "Visão por serviço e diagnóstico integrado",
             Self::PodExplorer => "Explorador de Pods",
             Self::PodDiagnostics => "Diagnóstico de Pods",
             Self::PodLogs => "Logs do Pod",

@@ -158,6 +158,17 @@ impl AppView {
             );
         }
         let needle = self.model.filter.to_lowercase();
+        let service_view = card(
+            "Visão por serviço e diagnóstico integrado",
+            "Usa o contexto, namespace e Service selecionados acima. Consulta somente leitura, sob demanda.",
+        )
+        .child(self.button("service-overview", "Consultar serviço e diagnóstico", cx, |m| {
+            m.load_service_overview()
+        }))
+        .child(self.button("service-parameters", "Abrir caminho no Parameter Store", cx, |m| {
+            m.open_service_parameters()
+        }))
+        .child(note("Mapeamento opcional em service-paths.json: contexto/namespace/service → /caminho. Confira perfil e região na aba AWS. Nenhum valor é consultado automaticamente."));
         let explorer = card(
             "Explorador e diagnóstico",
             "A última listagem alimenta o filtro e o diagnóstico local.",
@@ -196,6 +207,7 @@ impl AppView {
             .flex_col()
             .gap_4()
             .child(blocks([selectors, forward]))
+            .child(service_view)
             .child(blocks([
                 explorer,
                 card("Troubleshooting", "Ferramentas para o Pod selecionado.")
