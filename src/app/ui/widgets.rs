@@ -153,7 +153,8 @@ impl AppView {
             });
         }
         div()
-            .w(px(260.))
+            .w(px(320.))
+            .max_w_full()
             .flex()
             .flex_col()
             .gap_2()
