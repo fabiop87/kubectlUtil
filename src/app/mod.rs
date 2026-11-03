@@ -9,6 +9,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 
 mod diagnostics;
+mod favorites;
 mod mock;
 mod parameters;
 mod port_forward;
@@ -81,6 +82,7 @@ pub struct KubectlUtilApp {
     namespace: Selectable,
     pod: Selectable,
     service: Selectable,
+    favorites: favorites::Favorites,
     service_target: String,
     profile: Selectable,
     region: String,
@@ -129,6 +131,7 @@ impl KubectlUtilApp {
             namespace: Selectable::default(),
             pod: Selectable::default(),
             service: Selectable::default(),
+            favorites: favorites::Favorites::load(),
             service_target: String::new(),
             profile: Selectable::with_value("default"),
             region: "us-east-1".into(),
@@ -297,6 +300,16 @@ impl KubectlUtilApp {
     }
 
     /// Namespaces, Pods e Services pertencem ao contexto anterior e deixam de valer.
+    fn set_namespace(&mut self, value: String) {
+        if self.namespace.value != value {
+            self.namespace.value = value;
+            self.pod = Selectable::default();
+            self.service = Selectable::default();
+            self.explorer_output.clear();
+            self.explorer_namespace.clear();
+        }
+    }
+
     fn on_context_changed(&mut self) {
         self.namespace = Selectable::default();
         self.pod = Selectable::default();

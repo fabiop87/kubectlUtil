@@ -43,15 +43,7 @@ impl AppView {
                     "namespace",
                     "Namespace",
                     |m| &m.namespace,
-                    |m, value| {
-                        if m.namespace.value != value {
-                            m.namespace.value = value;
-                            m.pod = Default::default();
-                            m.service = Default::default();
-                            m.explorer_output.clear();
-                            m.explorer_namespace.clear();
-                        }
-                    },
+                    KubectlUtilApp::set_namespace,
                     window,
                     cx,
                 ))
@@ -61,6 +53,14 @@ impl AppView {
                 .child(self.button("pods", "Carregar Pods", cx, |m| m.load_pods()))
                 .child(self.button("services", "Carregar Services", cx, |m| m.load_services())),
         )
+        .child(self.field(
+            "namespace-manual",
+            "Digitar namespace",
+            |m| &m.namespace.value,
+            KubectlUtilApp::set_namespace,
+            window,
+            cx,
+        ))
         .child(
             row()
                 .child(self.choice("pod", "Pod", |m| &m.pod, |m, v| m.pod.value = v, window, cx))
@@ -72,6 +72,36 @@ impl AppView {
                     window,
                     cx,
                 )),
+        );
+        let favorites = card(
+            "Favoritos",
+            "Selecione um favorito para aplicar. Para adicionar ou editar, ajuste o nome e os campos da conexão acima.",
+        )
+        .children(self.model.favorites.error().map(|error| note(error.to_owned())))
+        .child(
+            row()
+                .child(self.choice(
+                    "favorite",
+                    "Favorito",
+                    |m| &m.favorites.selected,
+                    KubectlUtilApp::apply_favorite,
+                    window,
+                    cx,
+                ))
+                .child(self.field(
+                    "favorite-name",
+                    "Nome do favorito",
+                    |m| &m.favorites.name,
+                    |m, name| m.favorites.name = name,
+                    window,
+                    cx,
+                )),
+        )
+        .child(
+            row()
+                .child(self.button("favorite-add", "Adicionar", cx, |m| m.save_favorite(false)))
+                .child(self.button("favorite-edit", "Salvar edição", cx, |m| m.save_favorite(true)))
+                .child(self.button("favorite-delete", "Excluir", cx, KubectlUtilApp::delete_favorite)),
         );
         let mut forward = card(
             "Port Forward",
@@ -207,6 +237,7 @@ impl AppView {
             .flex_col()
             .gap_4()
             .child(blocks([selectors, forward]))
+            .child(favorites)
             .child(service_view)
             .child(blocks([
                 explorer,
