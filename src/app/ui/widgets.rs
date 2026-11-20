@@ -5,8 +5,15 @@ use gpui_kit::component::{
     select::{Select, SelectEvent},
 };
 
+const FIELD_W: f32 = 280.;
+
+/// Linha de botões ou itens; centraliza na vertical.
 pub(super) fn row() -> Div {
     div().flex().flex_wrap().items_center().gap_2()
+}
+/// Linha com campos e botões: os botões alinham com a base do campo, não com o rótulo.
+pub(super) fn form_row() -> Div {
+    div().flex().flex_wrap().items_end().gap_2()
 }
 pub(super) fn blocks(cards: impl IntoIterator<Item = Div>) -> Div {
     div().flex().flex_wrap().items_start().gap_4().children(
@@ -19,7 +26,7 @@ pub(super) fn note(text: impl Into<SharedString>) -> Div {
     div().text_xs().text_color(rgb(MUTED)).child(text.into())
 }
 pub(super) fn card(title: &'static str, subtitle: &'static str) -> Div {
-    theme::glass()
+    theme::panel()
         .child(
             div()
                 .text_base()
@@ -28,22 +35,21 @@ pub(super) fn card(title: &'static str, subtitle: &'static str) -> Div {
         )
         .child(note(subtitle))
 }
-pub(super) fn chip(label: &'static str, value: &str) -> Div {
-    row()
-        .max_w_full()
-        .rounded_full()
-        .border_1()
-        .border_color(rgba(0xDDC1FF25))
-        .bg(rgba(0xC9A1FF10))
-        .px_3()
-        .py_2()
+/// Item da barra de alvo: rótulo pequeno e valor em monoespaçada.
+pub(super) fn target(label: &'static str, value: &str, color: u32) -> Div {
+    let empty = value.is_empty();
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .min_w_0()
         .child(note(label))
         .child(
             div()
-                .min_w_0()
-                .text_color(rgb(ACCENT))
-                .child(if value.is_empty() {
-                    "Não selecionado".to_string()
+                .font_family(MONO)
+                .text_color(if empty { rgb(MUTED) } else { rgb(color) })
+                .child(if empty {
+                    "não definido".to_string()
                 } else {
                     value.to_string()
                 }),
@@ -86,10 +92,11 @@ impl AppView {
             state.update(cx, |state, cx| state.set_value(value, window, cx));
         }
         div()
-            .w(px(240.))
+            .w(px(FIELD_W))
+            .max_w_full()
             .flex()
             .flex_col()
-            .gap_2()
+            .gap_1()
             .child(note(label))
             .child(Input::new(&state).aria_label(label))
     }
@@ -153,11 +160,11 @@ impl AppView {
             });
         }
         div()
-            .w(px(320.))
+            .w(px(FIELD_W))
             .max_w_full()
             .flex()
             .flex_col()
-            .gap_2()
+            .gap_1()
             .child(note(label))
             .child(
                 Select::new(&state)

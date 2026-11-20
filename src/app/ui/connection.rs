@@ -5,10 +5,10 @@ impl AppView {
     pub(super) fn connection(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let selectors = card(
             "Conexão Kubernetes",
-            "O contexto selecionado é enviado em cada consulta. Carregue as opções sob demanda.",
+            "Cada consulta usa o contexto e o namespace selecionados. Carregue as listas sob demanda.",
         )
         .child(
-            row()
+            form_row()
                 .child(self.choice(
                     "context",
                     "Contexto",
@@ -31,14 +31,14 @@ impl AppView {
                     }),
                 )
                 .child(
-                    self.button("use-context", "Gravar no kubeconfig", cx, |m| {
+                    self.button("use-context", "Definir como padrão", cx, |m| {
                         m.use_selected_context()
                     })
-                    .tooltip("Altera o contexto padrão dos seus outros terminais."),
+                    .tooltip("Grava no kubeconfig e altera o contexto padrão dos seus outros terminais."),
                 ),
         )
         .child(
-            row()
+            form_row()
                 .child(self.choice(
                     "namespace",
                     "Namespace",
@@ -47,23 +47,25 @@ impl AppView {
                     window,
                     cx,
                 ))
+                .child(self.field(
+                    "namespace-manual",
+                    "Ou digite o namespace",
+                    |m| &m.namespace.value,
+                    KubectlUtilApp::set_namespace,
+                    window,
+                    cx,
+                ))
                 .child(self.button("namespaces", "Carregar namespaces", cx, |m| {
                     m.refresh_namespaces()
-                }))
-                .child(self.button("pods", "Carregar Pods", cx, |m| m.load_pods()))
-                .child(self.button("services", "Carregar Services", cx, |m| m.load_services())),
+                })),
         )
-        .child(self.field(
-            "namespace-manual",
-            "Digitar namespace",
-            |m| &m.namespace.value,
-            KubectlUtilApp::set_namespace,
-            window,
-            cx,
-        ))
         .child(
-            row()
+            form_row()
                 .child(self.choice("pod", "Pod", |m| &m.pod, |m, v| m.pod.value = v, window, cx))
+                .child(self.button("pods", "Carregar Pods", cx, |m| m.load_pods())),
+        )
+        .child(
+            form_row()
                 .child(self.choice(
                     "service",
                     "Service",
@@ -71,7 +73,8 @@ impl AppView {
                     |m, v| m.service.value = v,
                     window,
                     cx,
-                )),
+                ))
+                .child(self.button("services", "Carregar Services", cx, |m| m.load_services())),
         );
         let favorites = card(
             "Favoritos",
@@ -79,7 +82,7 @@ impl AppView {
         )
         .children(self.model.favorites.error().map(|error| note(error.to_owned())))
         .child(
-            row()
+            form_row()
                 .child(self.choice(
                     "favorite",
                     "Favorito",
@@ -101,14 +104,17 @@ impl AppView {
             row()
                 .child(self.button("favorite-add", "Adicionar", cx, |m| m.save_favorite(false)))
                 .child(self.button("favorite-edit", "Salvar edição", cx, |m| m.save_favorite(true)))
-                .child(self.button("favorite-delete", "Excluir", cx, KubectlUtilApp::delete_favorite)),
+                .child(
+                    self.button("favorite-delete", "Excluir", cx, KubectlUtilApp::delete_favorite)
+                        .danger(),
+                ),
         );
         let mut forward = card(
             "Port Forward",
             "Cada encaminhamento usa uma porta local exclusiva.",
         )
         .child(
-            row()
+            form_row()
                 .child(self.field(
                     "local-port",
                     "Porta local",
@@ -153,21 +159,32 @@ impl AppView {
         for (index, pf) in self.model.port_forwards.iter().enumerate() {
             forward = forward.child(
                 row()
-                    .child(div().text_color(rgb(0x8CE2C1)).child(format!(
-                        "● localhost:{} → {} · {} · {}{}",
-                        pf.local_port,
-                        pf.remote_port,
-                        pf.target,
-                        pf.namespace,
-                        if pf.backend.is_simulated() {
-                            " · MOCK"
-                        } else {
-                            ""
-                        }
-                    )))
+                    .justify_between()
+                    .px_3()
+                    .py_2()
+                    .rounded(px(6.))
+                    .border_1()
+                    .border_color(rgb(LINE))
+                    .bg(rgb(WELL))
+                    .child(
+                        row()
+                            .gap_3()
+                            .child(div().w(px(8.)).h(px(8.)).rounded_full().bg(rgb(ACCENT)))
+                            .child(
+                                div()
+                                    .font_family(MONO)
+                                    .child(format!("localhost:{} → {}", pf.local_port, pf.remote_port)),
+                            )
+                            .child(note(pf.target.to_string()))
+                            .child(note(pf.namespace.to_string()))
+                            .children(pf.backend.is_simulated().then(|| {
+                                div().text_xs().text_color(rgb(WARN)).child("simulado")
+                            })),
+                    )
                     .child(
                         Button::new(("stop-forward", index))
                             .label("Parar")
+                            .small()
                             .danger()
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.model.stop_port_forward(index);
@@ -189,15 +206,24 @@ impl AppView {
         }
         let needle = self.model.filter.to_lowercase();
         let service_view = card(
-            "Visão por serviço e diagnóstico integrado",
-            "Usa o contexto, namespace e Service selecionados acima. Consulta somente leitura, sob demanda.",
+            "Visão por serviço",
+            "Consulta somente leitura, sob demanda, com o contexto, o namespace e o Service selecionados.",
         )
-        .child(self.button("service-overview", "Consultar serviço e diagnóstico", cx, |m| {
-            m.load_service_overview()
-        }))
-        .child(self.button("service-parameters", "Abrir caminho no Parameter Store", cx, |m| {
-            m.open_service_parameters()
-        }))
+        .child(
+            row()
+                .child(
+                    self.button("service-overview", "Consultar serviço e diagnóstico", cx, |m| {
+                        m.load_service_overview()
+                    })
+                    .primary(),
+                )
+                .child(self.button(
+                    "service-parameters",
+                    "Abrir caminho no Parameter Store",
+                    cx,
+                    |m| m.open_service_parameters(),
+                )),
+        )
         .child(note("Mapeamento opcional em service-paths.json: contexto/namespace/service → /caminho. Confira perfil e região na aba AWS. Nenhum valor é consultado automaticamente."));
         let explorer = card(
             "Explorador e diagnóstico",
@@ -219,11 +245,10 @@ impl AppView {
             cx,
         ))
         .child(
-            div()
+            theme::well()
                 .id("explorer-lines")
-                .max_h(px(160.))
+                .max_h(px(220.))
                 .overflow_scroll()
-                .font_family("Consolas")
                 .children(
                     self.model
                         .explorer_output
