@@ -6,7 +6,7 @@ mod command;
 mod theme;
 
 fn main() {
-    application().with_assets(assets::Assets).run(|cx| {
+    application().with_assets(gpui_kit::assets::Assets).run(|cx| {
         init(cx);
         theme::install(cx);
         cx.on_window_closed(|cx, _| {
